@@ -44,7 +44,7 @@ with Client(
     # get 默认包含平铺头寸；非空 classifier 改为分层头寸。
 ```
 
-示例地址、会话名与空间仅说明格式，不代表可访问配置。CLI连接参数必须位于子命令前，也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供（前两个必需；会话怎么取得见[登录会话](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#session-injection)）：
+示例地址、会话名与空间仅说明格式，不代表可访问配置；还不知道空间 ID 时可用占位 ID（24 个 0）先列举可见空间再选定，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#还不知道空间-id-时)。CLI连接参数必须位于子命令前，也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供（前两个必需；会话怎么取得见[登录会话](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#session-injection)）：
 
 ```console
 rqamsh --base-url http://127.0.0.1:21015 --workspace-id 0123456789abcdef01234567 --cookie sid=<令牌> products list

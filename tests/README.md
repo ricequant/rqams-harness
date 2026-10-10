@@ -30,7 +30,7 @@ with Client(base_url=URI, workspace_id="<工作空间 ID>", cookies={"sid": "<�
     print(client.products.list()[:1])                  # 身份由注入的令牌决定
 ```
 
-CLI 同样支持令牌注入：`rqamsh --base-url <url> --workspace-id <id> --cookie sid=<值> workspaces list`（`--cookie` 可重复，也可用 `RQAMSH_COOKIE`，多个以分号分隔）；工作空间 ID 由 `workspaces list` 取得。
+CLI 同样支持令牌注入：`rqamsh --base-url <url> --workspace-id <id> --cookie sid=<值> workspaces list`（`--cookie` 可重复，也可用 `RQAMSH_COOKIE`，多个以分号分隔）；还不知道空间 ID 时先用占位 ID 列举——`rqamsh --base-url <url> --workspace-id 000000000000000000000000 --cookie sid=<值> workspaces list`，再从返回的 `data` 里取目标 `id` 换成真实值。
 
 - 令牌的取得方式与有效期由 AMS 平台决定；过期后重新取得，客户端不代办登录、也不会替你续期。
 - `workspace_id` 在任何形态下都必需，给错会报 `当前用户未登录` 或读到空列表。
