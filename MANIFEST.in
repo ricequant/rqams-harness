@@ -1,4 +1,7 @@
-# sdist 不带测试：wheel 的内容由 [tool.setuptools.packages.find] 决定（只含 rqamsh/），本来就干净；
-# 但 setuptools 会按历史默认规则把 tests/test*.py 自动收进 sdist，这里显式剔除。
-# docs/ 与 local/ 不落在任何打包规则内，两种包都不含，无需在此声明。
+# sdist 的种子是 git 跟踪的全部文件（所以 docs/ 会随包分发），再叠加 [tool.setuptools.packages.find] 指定的包；
+# wheel 则只含 rqamsh/ 与 dist-info，与 sdist 不同。
+# 下面显式排除不该分发的内容：测试、本地材料与内部开发文档（后两者不在 git 中，属于防御性声明）。
 prune tests
+prune local
+exclude AGENT.md
+exclude CHANGELOG.md
