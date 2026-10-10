@@ -19,11 +19,11 @@ python -m rqamsh trades upload --help
 
 ## 作为 Agent Skill 使用
 
-本项目配有一份供 agent 使用的 skill，位于 [`ricequant-skills`](https://github.com/ricequant/ricequant-skills) 的 `skills/basic/rqams` 技能族下，技能名 `rqamsh`。它只包含一个 `SKILL.md`，做三件事：告诉 agent 文档在哪、怎么按需检索、怎么调用 `rqamsh`。契约文档的单一来源仍是本仓库的 [`docs/`](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)，skill 不复制文档内容，也不提供下载或索引脚本——agent 自行获取（首选 `git clone --depth 1` 本仓库后本地检索，也可直接读 raw 单页）。
+本项目配有一份供 agent 使用的 skill，位于 [`ricequant-skills`](https://github.com/ricequant/ricequant-skills) 的 `skills/basic/rqams` 技能族下；该技能族目前还在 `dev/rqams-rqamsh` 分支，尚未合并到 `main`。族级 `SKILL.md` 只做路由：安装与自检、调用形态、取文档与检索方式在子技能 `rqamsh/SKILL.md`，业务链路判断在 `references/`。契约文档的单一来源仍是本仓库的 [`docs/`](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)，skill 不复制文档内容，也不提供下载或索引脚本——agent 自行获取（首选 `git clone --depth 1` 本仓库后本地检索，也可直接读 raw 单页）。
 
 把下面这段交给你的 agent，它会自行定位技能目录并落盘：
 
-> 在 `https://github.com/ricequant/ricequant-skills` 里找到 `skills/basic/rqams` 下名为 `rqamsh` 的技能，读取其中的 `SKILL.md`；在我使用的 agent 技能目录下建同名技能目录 `rqamsh` 并写入该文件，然后按文件内的引导完成初始化自检（`rqamsh schema`），最后告诉我安装的绝对路径与 `rqamsh schema` 的输出是否正常。
+> 在 `https://github.com/ricequant/ricequant-skills` 的 `dev/rqams-rqamsh` 分支里找到 `skills/basic/rqams` 技能族（含族级 `SKILL.md`、`rqamsh/SKILL.md` 与 `references/`），把整个技能族目录复制到我使用的 agent 技能目录下（目录名 `rqams`，保持内部相对路径），然后按 `rqamsh/SKILL.md` 的引导完成初始化自检（`rqamsh schema`），最后告诉我安装的绝对路径与 `rqamsh schema` 的输出是否正常。
 
 安装后即可用它处理「取 AMS 已算好的业务数据、执行受控写入」类需求。文档与本地安装版本不一致时，以 `rqamsh schema` 的运行时输出为准。
 
