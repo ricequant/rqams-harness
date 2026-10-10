@@ -145,41 +145,60 @@ def test_cli_requires_base_url_and_identity(endpoint, capsys, monkeypatch):
     assert state["requests"] == []
 
 
-def test_workspace_can_be_selected_after_connect(endpoint):
-    """省略 workspace_id 时不占位也不发空间头：用户接口可用、业务调用本地拒绝，选定后恢复。"""
+def test_workspace_defaults_to_first_listed(endpoint):
+    """省略 workspace_id 时不预设分区：首次业务调用先列举并选中第一个，之后沿用该分区。"""
     url, state = endpoint
     listing = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
     state["responses"] = [
-        (200, listing), (200, listing),
+        (200, listing),
         (200, {"products": []}), (200, {"product_groups": []}), (200, []),
         (200, {"products": [], "total": 0, "permissions": []}),
     ]
     with Client(url, cookies={"sid": "abc"}) as client:
         assert client.workspace_id is None
-        assert client.workspaces.list() == listing
-        assert "X-AMS-Workspace" not in state["requests"][-1][3]
+        client.products.list()
+        assert state["requests"][0][:2] == ("GET", "/api/user/v1/workspaces")
+        assert "X-AMS-Workspace" not in state["requests"][0][3]
+        assert client.workspace_id == WORKSPACE
+        assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
+        requests_before = len(state["requests"])
+        state["responses"] = [
+            (200, {"products": []}), (200, {"product_groups": []}), (200, []),
+            (200, {"products": [], "total": 0, "permissions": []}),
+        ]
+        client.products.list()
+        assert client.workspace_id == WORKSPACE
+        assert state["requests"][requests_before][:2] == ("GET", "/api/rqams/v2/products")
+
+
+def test_default_workspace_requires_visible_space(endpoint):
+    """列举为空时不给默认分区，业务调用报错，也不把请求发到未知分区。"""
+    url, state = endpoint
+    state["responses"] = [(200, {"data": []})]
+    with Client(url, cookies={"sid": "abc"}) as client:
         with pytest.raises(HarnessError) as error:
             client.products.list()
-        assert error.value.code == "invalid_config"
-        assert len(state["requests"]) == 1
-        assert client.workspaces.use("样例空间")["id"] == WORKSPACE
-        assert client.workspace_id == WORKSPACE
-        client.products.list()
-        assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
+    assert error.value.code == "resource_not_found"
+    assert [item[1] for item in state["requests"]] == ["/api/user/v1/workspaces"]
 
 
-def test_cli_lists_workspaces_without_workspace_id(endpoint, capsys, monkeypatch):
-    """CLI 省略 --workspace-id 也能列举可见空间，业务调用则被本地拒绝。"""
+def test_cli_defaults_to_first_workspace(endpoint, capsys, monkeypatch):
+    """CLI 不带 --workspace-id：列举与业务调用都成功，业务调用前自动选中第一个空间。"""
     monkeypatch.delenv("RQAMSH_WORKSPACE_ID", raising=False)
     url, state = endpoint
-    payload = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
-    state["responses"] = [(200, payload)]
+    listing = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["responses"] = [(200, listing)]
     assert main(["--base-url", url, "--cookie", "sid=abc", "workspaces", "list"]) == 0
-    assert json.loads(capsys.readouterr().out) == payload
+    assert json.loads(capsys.readouterr().out) == listing
     assert "X-AMS-Workspace" not in state["requests"][-1][3]
-    assert main(["--base-url", url, "--cookie", "sid=abc", "products", "list"]) == 1
-    assert json.loads(capsys.readouterr().err)["error"] == "invalid_config"
-    assert len(state["requests"]) == 1
+    state["responses"] = [
+        (200, listing),
+        (200, {"products": []}), (200, {"product_groups": []}), (200, []),
+        (200, {"products": [], "total": 0, "permissions": []}),
+    ]
+    assert main(["--base-url", url, "--cookie", "sid=abc", "products", "list"]) == 0
+    capsys.readouterr()
+    assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
 
 
 def test_catalog_is_not_filtered_locally(endpoint):

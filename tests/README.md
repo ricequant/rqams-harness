@@ -26,14 +26,14 @@ python -m pytest tests -q
 from rqamsh import Client
 
 URI = "https://<ams-host>:<port>"
-with Client(base_url=URI, workspace_id="<工作空间 ID>", cookies={"sid": "<令牌>"}) as client:
+with Client(base_url=URI, cookies={"sid": "<令牌>"}) as client:
     print(client.products.list()[:1])                  # 身份由注入的令牌决定
 ```
 
-CLI 同样支持令牌注入：`rqamsh --base-url <url> --cookie sid=<值> workspaces list`（`--cookie` 可重复，也可用 `RQAMSH_COOKIE`，多个以分号分隔）；`--workspace-id` 可以省略，省略时只能列举或切换空间，拿到目标 id 后由后续命令带上 `--workspace-id <id>`。
+CLI 同样支持令牌注入：`rqamsh --base-url <url> --cookie sid=<值> workspaces list`（`--cookie` 可重复，也可用 `RQAMSH_COOKIE`，多个以分号分隔）；默认使用可见空间中的第一个，需要指定非默认分区时在命令前加 `--workspace-id <id>`。
 
 - 令牌的取得方式与有效期由 AMS 平台决定；过期后重新取得，客户端不代办登录、也不会替你续期。
-- `workspace_id` 可以省略：省略时只有 workspaces list/use 可用，业务调用在本地报 `invalid_config`（不发请求）；给错会报 `当前用户未登录` 或读到空列表。
+- `workspace_id` 可以省略：默认使用可见空间中的第一个（由客户端在首次业务调用时自行确定）；没有可见空间时报 `resource_not_found`，给错会报 `当前用户未登录` 或读到空列表。
 - 目录可见性只看详情能否读到：读不到（403/404）的资源不进目录；客户端不查授权行、不做权限预判，越权由服务端与网关拒绝。
 - 凭据只走命令行参数/环境变量，禁止写进脚本、证据 JSON 或提交记录；HTTPS 证书校验保持开启，不要为了避免报错而关闭校验。
 - 自签或内网证书环境需要管理员提供可用入口，不要改 `verify`。

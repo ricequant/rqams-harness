@@ -50,14 +50,14 @@ class ResourceRef:
 
 
 class Client:
-    """连接 AMS：地址与已认证会话必需，工作空间可先省略、列举后再选定。"""
+    """连接 AMS：地址与已认证会话必需；工作空间默认取列举结果中的第一个。"""
 
     def __init__(self, base_url, workspace_id=None, *, session=None, cookies=None, timeout=60, wait_timeout=300, poll_interval=1):
         """创建客户端；地址、工作空间、会话或超时非法时抛 HarnessError。
 
         身份只来自注入的会话：session 只复制其中的 cookie，连接池、适配器与超时仍由本客户端管理。
-        省略 workspace_id 时不发送空间请求头：工作空间用户接口（workspaces.list/use）仍可用，
-        业务调用在选定空间之前报 invalid_config。
+        省略 workspace_id 时不预设分区：首次业务调用先列举可见空间并取记录中的第一个作为默认分区，
+        之后可用 workspaces.use 切换。
         """
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
@@ -192,7 +192,7 @@ class Client:
         if self._closed:
             raise HarnessError("client_closed", "客户端已关闭")
         if self.workspace_id is None and (base or self.base_url) != self.user_url:
-            raise HarnessError("invalid_config", "当前客户端尚未选定工作空间：先用 workspaces.list 列举可见空间，再用 workspaces.use 选定，或在构造客户端时传入 workspace_id")
+            self._select_default_workspace()
         # 路径始终拼接在固定base_url后；集合动作的冒号不是URL scheme。
         if path.startswith(("/", "\\")) or "://" in path or ".." in path.split("/") or "?" in path or "#" in path:
             raise HarnessError("invalid_path", "仅允许本服务内的相对 API 路径")
@@ -348,6 +348,23 @@ class Client:
                 seen.add(key)
                 refs.append(ref)
         return refs
+
+    def _select_default_workspace(self):
+        """未指定空间时取列举结果中的第一个作为默认分区，并同步请求头。
+
+        空列表或记录缺合法 ID 时给出可核对的错误，不把业务请求发到未知分区。
+        """
+        payload = self.workspaces.list()
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise HarnessError("invalid_response", "用户接口未返回工作空间数组")
+        if not rows:
+            raise HarnessError("resource_not_found", "当前身份没有可见的工作空间，无法确定默认分区", status=404)
+        selected = rows[0].get("id") if isinstance(rows[0], dict) else None
+        if not isinstance(selected, str) or len(selected) != 24 or any(c not in "0123456789abcdefABCDEF" for c in selected):
+            raise HarnessError("invalid_response", "工作空间记录缺少合法 ID", details={"workspace": rows[0]})
+        self.use_workspace(selected)
+        return self.workspace_id
 
     def use_workspace(self, workspace_id):
         """把后续请求切到指定工作空间：同时更新身份属性与请求头，不改变用户身份。"""

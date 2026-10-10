@@ -105,7 +105,7 @@ def _parser():
     """注册连接配置、离线发现及每个资源的公开业务方法。"""
     parser = JsonArgumentParser(prog="rqamsh", description="面向 Agent 的 AMS API；连接配置也可由 RQAMSH_* 环境变量提供")
     parser.add_argument("--base-url", default=os.environ.get("RQAMSH_BASE_URL"), help="AMS 服务地址；也可用 RQAMSH_BASE_URL")
-    parser.add_argument("--workspace-id", default=os.environ.get("RQAMSH_WORKSPACE_ID"), help="初始工作空间 ID；省略时先用 workspaces list 列举可见空间、workspaces use 选定，也可用 RQAMSH_WORKSPACE_ID")
+    parser.add_argument("--workspace-id", default=os.environ.get("RQAMSH_WORKSPACE_ID"), help="工作空间 ID；默认使用可见空间中的第一个（workspaces list 查看、workspaces use 切换），也可用 RQAMSH_WORKSPACE_ID")
     parser.add_argument("--cookie", action="append", default=_env_cookies(), metavar="NAME=VALUE", help="令牌（当前形态是会话 cookie）；可重复，也可用 RQAMSH_COOKIE（多个以分号分隔）")
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--wait-timeout", type=float, default=300)

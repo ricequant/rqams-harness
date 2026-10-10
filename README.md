@@ -34,7 +34,6 @@ from rqamsh import Client
 
 with Client(
     base_url="http://127.0.0.1:21015",
-    workspace_id="0123456789abcdef01234567",
     cookies={"sid": "<令牌>"},
 ) as client:
     products = client.products.list()
@@ -44,10 +43,10 @@ with Client(
     # get 默认包含平铺头寸；非空 classifier 改为分层头寸。
 ```
 
-示例地址、会话名与空间仅说明格式，不代表可访问配置；工作空间 ID 可以省略：先用 workspaces list 列举可见空间，再在后续调用里按 ID 选定，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#省略-workspace_id-时)。CLI连接参数必须位于子命令前，也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供（只有 `RQAMSH_BASE_URL` 必需；会话怎么取得见[登录会话](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#session-injection)）：
+示例中的地址与会话名仅说明格式，不代表可访问配置；工作空间默认使用可见空间中的第一个，需要换分区时用 `workspaces use`（CLI 用 `--workspace-id`），见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。CLI连接参数必须位于子命令前，也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供（只有 `RQAMSH_BASE_URL` 必需；会话怎么取得见[登录会话](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#session-injection)）：
 
 ```console
-rqamsh --base-url http://127.0.0.1:21015 --workspace-id 0123456789abcdef01234567 --cookie sid=<令牌> products list
+rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> products list
 ```
 
 模块式调用同样可用：先 `rqamsh.init(base_url, workspace_id=..., cookies={...})`，再 `rqamsh.products.get(resource=...)`，最后 `rqamsh.close()`；并行不同身份应分别持有显式 Client，不共享模块默认实例。
@@ -67,7 +66,7 @@ rqamsh --base-url http://127.0.0.1:21015 --workspace-id 0123456789abcdef01234567
 - 下载必须指定新输出文件，不覆盖已有文件。
 - **未暴露能力不等于阻塞**：模糊检索与打分、区间差分、加权贡献、报告渲染（Markdown/DOCX/PNG）、序列拼接、定时推送、写入前预览与幂等键属于调用方（Agent）职责；企业微信、邮件这类第三方通道的对接由对端官方接口决定，本项目不封装也不测试。两者都不算本项目缺口，真正的缺口只有两类：**取不到的数据**（服务端未持久化的配置版本/审批元数据、需服务端规则引擎的判定）与**外部凭证或公网入口**。边界判据见[必要边界](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md#必要边界)；客户端契约测试、只读联调配方与实测量级见 [`tests/README.md`](https://github.com/ricequant/rqams-harness/blob/main/tests/README.md)。
 
-**安全：**本版不代办登录，也不接收账号密码。请向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie）；工作空间可自行列举后选定，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#省略-workspace_id-时)。即使地址是本机，也可能操作正式业务数据；上传、修改、删除、重算前必须确认目标与授权，客户端资源筛选不能替代服务端授权。
+**安全：**本版不代办登录，也不接收账号密码。请向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie）；工作空间默认使用可见空间中的第一个，需要时再切换，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。即使地址是本机，也可能操作正式业务数据；上传、修改、删除、重算前必须确认目标与授权，客户端资源筛选不能替代服务端授权。
 
 ## 从用户需求选择能力
 

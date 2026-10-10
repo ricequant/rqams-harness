@@ -11,7 +11,7 @@ def init(base_url, workspace_id=None, *, session=None, cookies=None, timeout=60,
     """设置模块默认客户端并关闭旧连接；显式 Client 可并存不同身份。
 
     身份来自注入的 session/cookies，与显式 Client 行为一致；workspace_id 可省略，
-    省略时先用 workspaces.list 列举可见空间、workspaces.use 选定，再调用业务块。
+    省略时首次业务调用先列举可见空间并选中第一个，需要换分区时用 workspaces.use。
     """
     global _client
     new_client = Client(
