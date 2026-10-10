@@ -1,0 +1,4 @@
+# sdist 不带测试：wheel 的内容由 [tool.setuptools.packages.find] 决定（只含 rqamsh/），本来就干净；
+# 但 setuptools 会按历史默认规则把 tests/test*.py 自动收进 sdist，这里显式剔除。
+# docs/ 与 local/ 不落在任何打包规则内，两种包都不含，无需在此声明。
+prune tests

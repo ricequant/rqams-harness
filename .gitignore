@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+
+# 本地工作材料（场景探测、证据、示例代码与要点页、文档校验器、渲染产物等），不随仓库提交
+local/
+tmp-*/
+
+# IDE 与本机会话残留（可能含机器绝对路径），不随仓库提交
+.idea/
+.superpowers/
+
+# 内部开发口径的文档（AGENT.md 是文档书写规范与本地规格索引，CHANGELOG.md 是内部轮次记录），不随公开仓库提交
+AGENT.md
+CHANGELOG.md

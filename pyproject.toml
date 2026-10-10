@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rqams-harness"
+version = "0.0.1"
+description = "Agent-oriented AMS Python API, CLI and business documentation"
+readme = "README.md"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31,<3", "urllib3>=2,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+rqamsh = "rqamsh.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rqamsh*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
