@@ -2,7 +2,7 @@
 
 ## 建立连接
 
-请向 AMS 管理员取得可用服务地址与一个可用的令牌（当前部署是登录会话 cookie，取得方式见[登录会话](#session-injection)）；工作空间 ID 不必等人分配，可先用占位 ID 列举当前身份可见的空间再选定，见[还不知道空间 ID 时](workspaces.md#还不知道空间-id-时)。本版不代办登录，也不接收账号密码。Python 显式传入这些配置；模块级 `rqamsh.init` 与显式 `Client` 使用相同业务方法。建议使用上下文管理器释放连接：
+请向 AMS 管理员取得可用服务地址与一个可用的令牌（当前部署是登录会话 cookie，取得方式见[登录会话](#session-injection)）；工作空间 ID 可以省略：省略时先列举当前身份可见的空间再选定，见[省略 workspace_id 时](workspaces.md#省略-workspace_id-时)。本版不代办登录，也不接收账号密码。Python 显式传入这些配置；模块级 `rqamsh.init` 与显式 `Client` 使用相同业务方法。建议使用上下文管理器释放连接：
 
 ```python
 from rqamsh import Client
@@ -47,7 +47,7 @@ with Client(
 ```
 
 - `session=` 与 `cookies=` 只能给一个，同时给出报 `invalid_config`。`session` 只复制其中的 cookie，连接池、适配器与超时仍由本客户端提供，`session.headers` 里的自定义请求头不会带过来；`cookies` 接受名称到值的映射，或 requests 的 cookie jar 对象。
-- 未提供 `session` 或 `cookies` 注入入口时抛 `invalid_config`；客户端不校验所给 cookie 是否非空、有效或未过期。`workspace_id` 在所有形态下都必需。
+- 未提供 `session` 或 `cookies` 注入入口时抛 `invalid_config`；客户端不校验所给 cookie 是否非空、有效或未过期。`workspace_id` 可省略，省略时只有工作空间用户接口可用，先列举可见空间再 `workspaces.use` 切换。
 - CLI 用 `--cookie NAME=VALUE`（可重复）或 `RQAMSH_COOKIE`（多个以 `;` 分隔）。
 - 客户端只做一件事：把令牌随每个请求发出。身份核验、可见性与写入权限全部由服务端与 AMS 网关判定；目录里出现的资源就是能读到详情的资源。
 - cookie 名称属于对端实现（示例按当前部署写 `sid`），不是本客户端的契约；写在文档里的地址与 ID 只表示格式。令牌是调用方持有的凭据，不要写进脚本、文档、证据文件或提交记录；过期后重新从 AMS 平台取得。
@@ -59,17 +59,17 @@ with Client(
 工作空间是服务端的数据分区，不是客户端可以自行创建的容器；本版只使用 AMS 管理员已授权、且当前身份可见的空间。下面 8 条给出判断「某个资源能否访问、能否写入」时的空间边界，每条给出可核对的结论；列举可见空间与在会话内切换见[工作空间](workspaces.md)。
 
 1. **工作空间写在每条资源记录上，客户端的 `workspace_id` 只选择请求分区、不是凭证。** 产品、产品组、权限记录、标签、自定义标的、风控条款与自定义指标等记录都带 `workspace_id` 字段，查询、唯一约束与权限判定都以它为准；客户端传入的 `workspace_id` 决定请求落到哪个分区，它本身不构成身份证明。
-2. **每个业务请求都必须携带工作空间。** 服务端从 `X-AMS-Workspace` 请求头取空间 ID：缺失报 `No workspace specified`，非法报 `illegal workspace`。Harness 在构造 `Client`（或 CLI 启动）时设置该头作为初始分区，也可用 `workspaces.use` 在同一客户端切换空间。
+2. **每个业务请求都必须携带工作空间。** 服务端从 `X-AMS-Workspace` 请求头取空间 ID：缺失报 `No workspace specified`，非法报 `illegal workspace`。Harness 在构造 `Client`（或 CLI 启动）时设置该头作为初始分区，也可用 `workspaces.use` 在同一客户端切换空间；构造客户端或启动 CLI 时可以省略工作空间，此时不发送该请求头，只有工作空间用户接口可用，业务调用在选定空间之前本地报 `invalid_config`。
 3. **可见性 = 空间 ∩ 权限。** 服务端按 `workspace_id` 返回空间内的全部产品（不按用户过滤），权限过滤发生在 AMS 网关：网关按 `(user_id, workspace_id)` 上的权限记录，只放行自己创建的与分享给自己的产品/产品组。「空间内存在」既不代表能看到，也不代表可写，见[可见不等于可写](permissions.md#可见不等于可写)。
 4. **唯一约束以工作空间为范围。** 产品名称、账户名称与基金代码在空间内唯一，标签在同用户同空间内唯一；跨空间可以重名，因此「名称已存在」只在当前空间成立。
 5. **跨空间资源被拒绝。** 网关对请求涉及的产品/产品组逐个比对 `workspace_id`，有任一不属于当前空间就整体报错（原文形如「请检查所选以下产品(组)是否存在于当前空间」）；自定义标的混入其他空间的 ID 时在预检阶段整体失败、不写入。
 6. **分享受空间约束。** 权限记录按 `(user_id, workspace_id, resource_type, resource_id)` 组织；被分享者必须已属于该空间，否则逐项报「您所操作的用户没有使用该工作空间的权限」；`admin` 权限不能被分享。`products.list(member_user_id=…)` 筛的是「我分享给该成员的产品」，不是空间内任意成员的产品。
-7. **工作空间可列举、可在会话内切换，但只有用户接口提供。** 列举走 AMS 用户接口（与业务接口同源、前缀 `/api/user`），需要与业务接口相同的认证入口；业务接口与网关都没有空间列表端点。切换同时更新客户端的 `workspace_id` 与 `X-AMS-Workspace` 请求头，同一会话即可换分区，不重新登录、身份不变；CLI 每个进程只执行一个操作，脚本化时用全局 `--workspace-id`。一个身份可以同时属于多个空间，多空间可以逐个建 `Client` 或在一个客户端上切换，两者都见[工作空间](workspaces.md)。
+7. **工作空间可列举、可在会话内切换，但只有用户接口提供。** 列举走 AMS 用户接口（与业务接口同源、前缀 `/api/user`），需要与业务接口相同的认证入口；业务接口与网关都没有空间列表端点。切换同时更新客户端的 `workspace_id` 与 `X-AMS-Workspace` 请求头，同一会话即可换分区，不重新登录、身份不变；CLI 每个进程只执行一个操作，脚本化时先不带 `--workspace-id` 跑 `workspaces list` 取 ID，再在后续命令上带 `--workspace-id`（进程内切换没有后续操作，无实益）。一个身份可以同时属于多个空间，多空间可以逐个建 `Client` 或在一个客户端上切换，两者都见[工作空间](workspaces.md)。
 8. **空间成员关系由用户服务维护；资源上的 `workspace_id` 只读。** 服务端在登录会话缓存未命中时向用户服务校验该用户是否属于此空间（命中缓存后不再复查）；未启用登录认证的部署不做该校验。资源记录里的 `workspace_id` 由连接身份决定，不接受客户端写入。`workspace_id` 的只读标注见[产品字段](fields/products.md)。
 
 ## Python 与 CLI 调用约定
 
-Python 有两种等价写法：除本页的连接示例外，各业务页示例统一用模块级调用——先 `rqamsh.init(base_url, workspace_id=..., cookies=...)` 建立默认客户端，之后直接写 `rqamsh.<业务块>.<操作>(...)`，结束时 `rqamsh.close()`；需要并行多个身份时改用上面的显式 `Client`，各自持有实例，不共享模块默认客户端。未初始化就写 `rqamsh.<业务块>.<操作>` 会得到 `not_initialized`。
+Python 有两种等价写法：除本页的连接示例外，各业务页示例统一用模块级调用——先 `rqamsh.init(base_url, cookies=...)` 建立默认客户端（`workspace_id` 可省略，省略时先列举可见空间再用 `workspaces.use` 切换），之后直接写 `rqamsh.<业务块>.<操作>(...)`，结束时 `rqamsh.close()`；需要并行多个身份时改用上面的显式 `Client`，各自持有实例，不共享模块默认客户端。未初始化就写 `rqamsh.<业务块>.<操作>` 会得到 `not_initialized`。
 
 签名按参数顺序列出参数名、类型与默认值，例如 `rqamsh.balances.get(resource_or_resources: str | list[str], *, date: str | None=None, ...)`。调用时一律显式写成 `参数名=值`，例如 `rqamsh.balances.get(resource_or_resources='授权测试产品', date='2026-01-05')`，不依赖位置顺序；CLI 使用同名的 `--参数名`。签名只描述参数本身，不表示可省略语义：默认值 `None` 的含义由各操作说明给出。
 
@@ -79,7 +79,7 @@ CLI 的全局选项必须写在业务子命令之前，块名与操作名把下�
 rqamsh --base-url http://127.0.0.1:21015 --workspace-id 0123456789abcdef01234567 --cookie sid=<令牌> balances get --resource-or-resources "授权测试产品" --date "2026-01-05"
 ```
 
-- 连接参数也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供，前两个必需；会话的取得方式见[登录会话](#session-injection)。`--timeout`、`--wait-timeout`、`--poll-interval` 只作为全局选项传入。
+- 连接参数也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供，只有 `RQAMSH_BASE_URL` 必需；`RQAMSH_WORKSPACE_ID` 可省略，省略时只能走工作空间的列举与切换；会话的取得方式见[登录会话](#session-injection)。`--timeout`、`--wait-timeout`、`--poll-interval` 只作为全局选项传入。
 - 参数名同样把下划线换成连字符（`--order-book-id`）。方法 `data` 参数使用 `--input`（别名 `--data`），值支持 JSON 字面量、`@file.json` 与 `@-` 读 stdin；`trades upload`、`valuation_reports upload` 的 `data` 也可直接给文件名。
 - 数组与对象写 JSON 文本，布尔写 `true`/`false`：`--fields '["date","total_equity"]'`、`--drilldown false`。方法名、块名或参数名写错以 `invalid_arguments` 失败，不会猜默认值。
 - `rqamsh schema` 与各层 `--help` 无需连接即可离线查看块、操作与参数；输出与错误语义见下节。
@@ -87,7 +87,7 @@ rqamsh --base-url http://127.0.0.1:21015 --workspace-id 0123456789abcdef01234567
 
 ## 身份与权限边界
 
-`workspace_id` 是 24 位十六进制字符串，具体边界见[工作空间是什么](#workspace)。身份只来自[登录会话](#session-injection)，没有第二个入口；`workspace_id` 本身不是登录凭证，不能仅凭填对空间 ID 获得访问权。用一个不存在的 ID（例如 24 个 0）只够列举可见空间，业务查询得到空结果，读不到其他空间的数据；不要拿猜出来的 ID 反复试探他人的分区。
+`workspace_id` 是 24 位十六进制字符串，具体边界见[工作空间是什么](#workspace)。身份只来自[登录会话](#session-injection)，没有第二个入口；`workspace_id` 本身不是登录凭证，不能仅凭填对空间 ID 获得访问权。省略 `workspace_id` 时只有工作空间用户接口可用，业务调用在选定空间之前本地报 `invalid_config`；用一个不存在的 ID 也不会读到其他空间的数据。不要拿猜出来的 ID 反复试探他人的分区。
 
 令牌过期后服务端会拒绝请求，需要重新取得，客户端不会替你续期。仅在用户授权的资源范围内调用，上传、覆盖、删除、重算前确认目标与影响范围。
 

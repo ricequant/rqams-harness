@@ -10,7 +10,8 @@ _client = None
 def init(base_url, workspace_id=None, *, session=None, cookies=None, timeout=60, wait_timeout=300, poll_interval=1):
     """设置模块默认客户端并关闭旧连接；显式 Client 可并存不同身份。
 
-    身份来自注入的 session/cookies，与显式 Client 行为一致。
+    身份来自注入的 session/cookies，与显式 Client 行为一致；workspace_id 可省略，
+    省略时先用 workspaces.list 列举可见空间、workspaces.use 选定，再调用业务块。
     """
     global _client
     new_client = Client(
@@ -39,5 +40,5 @@ def __getattr__(name):
     if name not in RESOURCE_CLASSES:
         raise AttributeError(name)
     if _client is None:
-        raise HarnessError("not_initialized", "先调用 rqamsh.init(base_url, workspace_id, cookies=...)，或使用显式 Client")
+        raise HarnessError("not_initialized", "先调用 rqamsh.init(base_url, cookies=...)，或使用显式 Client")
     return getattr(_client, name)

@@ -104,8 +104,8 @@ def _cookies(items):
 def _parser():
     """注册连接配置、离线发现及每个资源的公开业务方法。"""
     parser = JsonArgumentParser(prog="rqamsh", description="面向 Agent 的 AMS API；连接配置也可由 RQAMSH_* 环境变量提供")
-    for name in ("base_url", "workspace_id"):
-        parser.add_argument("--" + name.replace("_", "-"), default=os.environ.get("RQAMSH_" + name.upper()))
+    parser.add_argument("--base-url", default=os.environ.get("RQAMSH_BASE_URL"), help="AMS 服务地址；也可用 RQAMSH_BASE_URL")
+    parser.add_argument("--workspace-id", default=os.environ.get("RQAMSH_WORKSPACE_ID"), help="初始工作空间 ID；省略时先用 workspaces list 列举可见空间、workspaces use 选定，也可用 RQAMSH_WORKSPACE_ID")
     parser.add_argument("--cookie", action="append", default=_env_cookies(), metavar="NAME=VALUE", help="令牌（当前形态是会话 cookie）；可重复，也可用 RQAMSH_COOKIE（多个以分号分隔）")
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--wait-timeout", type=float, default=300)
@@ -143,8 +143,8 @@ def main(argv=None):
         if namespace.block == "schema":
             _emit(schema(), sys.stdout)
             return 0
-        if namespace.base_url is None or namespace.workspace_id is None:
-            raise HarnessError("invalid_config", "必须显式配置 base_url 与 workspace_id（参数或 RQAMSH_* 环境变量）")
+        if namespace.base_url is None:
+            raise HarnessError("invalid_config", "必须显式配置 base_url（参数或 RQAMSH_BASE_URL 环境变量）")
         cookies = _cookies(namespace.cookie)
         cls = RESOURCE_CLASSES[namespace._block]
         method = getattr(cls, namespace._method)

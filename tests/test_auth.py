@@ -133,14 +133,53 @@ def test_cli_rejects_malformed_cookie(endpoint, capsys):
     assert state["requests"] == []
 
 
-def test_cli_requires_workspace_and_identity(endpoint, capsys):
-    """缺 workspace_id 或缺身份都在本地拒绝，且不发请求。"""
+def test_cli_requires_base_url_and_identity(endpoint, capsys, monkeypatch):
+    """缺 base_url 或缺身份都在本地拒绝，且不发请求；缺 workspace_id 不算错。"""
+    monkeypatch.delenv("RQAMSH_BASE_URL", raising=False)
+    monkeypatch.delenv("RQAMSH_COOKIE", raising=False)
     url, state = endpoint
-    assert main(["--base-url", url, "--cookie", "sid=abc", "workspaces", "list"]) == 1
+    assert main(["--cookie", "sid=abc", "workspaces", "list"]) == 1
     assert json.loads(capsys.readouterr().err)["error"] == "invalid_config"
-    assert main(["--base-url", url, "--workspace-id", WORKSPACE, "workspaces", "list"]) == 1
+    assert main(["--base-url", url, "workspaces", "list"]) == 1
     assert json.loads(capsys.readouterr().err)["error"] == "invalid_config"
     assert state["requests"] == []
+
+
+def test_workspace_can_be_selected_after_connect(endpoint):
+    """省略 workspace_id 时不占位也不发空间头：用户接口可用、业务调用本地拒绝，选定后恢复。"""
+    url, state = endpoint
+    listing = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["responses"] = [
+        (200, listing), (200, listing),
+        (200, {"products": []}), (200, {"product_groups": []}), (200, []),
+        (200, {"products": [], "total": 0, "permissions": []}),
+    ]
+    with Client(url, cookies={"sid": "abc"}) as client:
+        assert client.workspace_id is None
+        assert client.workspaces.list() == listing
+        assert "X-AMS-Workspace" not in state["requests"][-1][3]
+        with pytest.raises(HarnessError) as error:
+            client.products.list()
+        assert error.value.code == "invalid_config"
+        assert len(state["requests"]) == 1
+        assert client.workspaces.use("样例空间")["id"] == WORKSPACE
+        assert client.workspace_id == WORKSPACE
+        client.products.list()
+        assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
+
+
+def test_cli_lists_workspaces_without_workspace_id(endpoint, capsys, monkeypatch):
+    """CLI 省略 --workspace-id 也能列举可见空间，业务调用则被本地拒绝。"""
+    monkeypatch.delenv("RQAMSH_WORKSPACE_ID", raising=False)
+    url, state = endpoint
+    payload = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["responses"] = [(200, payload)]
+    assert main(["--base-url", url, "--cookie", "sid=abc", "workspaces", "list"]) == 0
+    assert json.loads(capsys.readouterr().out) == payload
+    assert "X-AMS-Workspace" not in state["requests"][-1][3]
+    assert main(["--base-url", url, "--cookie", "sid=abc", "products", "list"]) == 1
+    assert json.loads(capsys.readouterr().err)["error"] == "invalid_config"
+    assert len(state["requests"]) == 1
 
 
 def test_catalog_is_not_filtered_locally(endpoint):

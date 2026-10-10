@@ -50,12 +50,14 @@ class ResourceRef:
 
 
 class Client:
-    """连接 AMS：地址、工作空间与已认证会话必需。"""
+    """连接 AMS：地址与已认证会话必需，工作空间可先省略、列举后再选定。"""
 
     def __init__(self, base_url, workspace_id=None, *, session=None, cookies=None, timeout=60, wait_timeout=300, poll_interval=1):
         """创建客户端；地址、工作空间、会话或超时非法时抛 HarnessError。
 
         身份只来自注入的会话：session 只复制其中的 cookie，连接池、适配器与超时仍由本客户端管理。
+        省略 workspace_id 时不发送空间请求头：工作空间用户接口（workspaces.list/use）仍可用，
+        业务调用在选定空间之前报 invalid_config。
         """
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
@@ -68,7 +70,7 @@ class Client:
             raise HarnessError("invalid_config", "cookies 必须为名称到值的映射或 RequestsCookieJar")
         if session is None and cookies is None:
             raise HarnessError("invalid_config", "必须通过 session 或 cookies 注入已认证会话")
-        if not isinstance(workspace_id, str) or len(workspace_id) != 24 or any(c not in "0123456789abcdefABCDEF" for c in workspace_id):
+        if workspace_id is not None and (not isinstance(workspace_id, str) or len(workspace_id) != 24 or any(c not in "0123456789abcdefABCDEF" for c in workspace_id)):
             raise HarnessError("invalid_config", "workspace_id 必须为 24 位十六进制 ID")
         for name, value in (("timeout", timeout), ("wait_timeout", wait_timeout), ("poll_interval", poll_interval)):
             if not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0:
@@ -78,7 +80,7 @@ class Client:
         self.origin = f"{parsed.scheme}://{parsed.netloc}"
         self.user_url = self.origin + "/api/user"
         self.timeout, self.wait_timeout, self.poll_interval = timeout, wait_timeout, poll_interval
-        self.workspace_id = workspace_id.lower()
+        self.workspace_id = workspace_id.lower() if workspace_id else None
         self.session = requests.Session()
         self.session.trust_env = False
         if session is not None:
@@ -87,7 +89,9 @@ class Client:
             self.session.cookies.update(cookies)
         self.session.mount("http://", DeadlineAdapter())
         self.session.mount("https://", DeadlineAdapter())
-        headers = {"X-AMS-Workspace": workspace_id, "Accept": "application/json"}
+        headers = {"Accept": "application/json"}
+        if self.workspace_id is not None:
+            headers["X-AMS-Workspace"] = self.workspace_id
         self.session.headers.update(headers)
         self._closed = False
         self._resources = {}
@@ -187,6 +191,8 @@ class Client:
         """执行相对端点并有界等待；异常保留任务 ID，不自动重放不明写入。base 可指向业务前缀之外的接口前缀。"""
         if self._closed:
             raise HarnessError("client_closed", "客户端已关闭")
+        if self.workspace_id is None and (base or self.base_url) != self.user_url:
+            raise HarnessError("invalid_config", "当前客户端尚未选定工作空间：先用 workspaces.list 列举可见空间，再用 workspaces.use 选定，或在构造客户端时传入 workspace_id")
         # 路径始终拼接在固定base_url后；集合动作的冒号不是URL scheme。
         if path.startswith(("/", "\\")) or "://" in path or ".." in path.split("/") or "?" in path or "#" in path:
             raise HarnessError("invalid_path", "仅允许本服务内的相对 API 路径")

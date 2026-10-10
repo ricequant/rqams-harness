@@ -2,16 +2,15 @@
 
 工作空间是 AMS 的数据分区：产品、产品组、权限、标签、风控条款与自定义标的等记录都带 `workspace_id`，业务请求的 `X-AMS-Workspace` 决定读写落在哪个分区。一个身份可以同时属于多个工作空间，本块用于列举当前身份可见的工作空间，并在同一客户端会话内切换。
 
-列举走 AMS 用户接口（与业务接口同源、前缀为 `/api/user`），需要与业务接口相同的认证入口：本项目不代办登录，请由管理员提供已认证入口，或按[连接说明](connection.md)的联调做法注入登录会话。切换只改变后续请求的数据分区，不改变用户身份，也不影响其他客户端或进程。
+列举走 AMS 用户接口（与业务接口同源、前缀为 `/api/user`），需要与业务接口相同的认证入口：本项目不代办登录，认证入口请由管理员提供，或按[连接说明](connection.md)的联调做法注入登录会话；工作空间 ID 不必由外部提供，可以省略后先列举再选定，见下节。切换只改变后续请求的数据分区，不改变用户身份，也不影响其他客户端或进程。
 
-## 还不知道空间 ID 时
+## 省略 workspace_id 时
 
-`workspace_id` 只选择请求分区，不是凭证，所以不必等别人分配：用格式合法但不存在的 ID（24 个 0）就能连上用户接口，列举当前身份可见的全部工作空间；在这个空分区下发业务请求只会得到空集合，看不到任何其他空间的数据。拿到清单后，再用目标 `id` 重建客户端，或调用 `use` 切换过去，之后的调用才落到目标空间。
+`workspace_id` 只选择请求分区，不是凭证，所以可以省略：省略时客户端不发送 `X-AMS-Workspace` 请求头，只有工作空间用户接口可用（列举与切换）；在选定空间之前发起业务调用，会在发出请求前本地报 `invalid_config`（当前客户端尚未选定工作空间：先用 workspaces.list 列举可见空间，再用 workspaces.use 选定，或在构造客户端时传入 workspace_id）。拿到清单后，用目标 `id` 重建客户端，或调用 `use` 切换过去，之后的调用才落到目标空间；切换后客户端的 `workspace_id` 与请求头同步，业务调用恢复。
 
 ```python
 with Client(
     base_url="http://127.0.0.1:21015",
-    workspace_id="000000000000000000000000",   # 占位，仅用于列举可见空间
     cookies={"sid": "<令牌>"},
 ) as client:
     for workspace in client.workspaces.list()["data"]:
@@ -19,8 +18,10 @@ with Client(
     client.workspaces.use("<选定空间的 ID>")     # 切换后本节所有操作都落到该空间
 ```
 
+CLI 每个进程只执行一个操作，进程内切换没有后续操作，所以 CLI 侧的流程是先不带 `--workspace-id` 列举可见空间，再从返回的 `data` 取 `id`，在后续命令上带 `--workspace-id`：
+
 ```console
-rqamsh --base-url http://127.0.0.1:21015 --workspace-id 000000000000000000000000 --cookie sid=<令牌> workspaces list
+rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> workspaces list
 rqamsh --base-url http://127.0.0.1:21015 --workspace-id <选定空间的 ID> --cookie sid=<令牌> products list
 ```
 
@@ -28,7 +29,7 @@ rqamsh --base-url http://127.0.0.1:21015 --workspace-id <选定空间的 ID> --c
 
 |用户需求|操作顺序|完成条件|
 |---|---|---|
-|还不知道任何空间 ID，先拿到可见清单|用占位 ID（24 个 0）构造客户端或 CLI → `list` → 记下目标 `id`|返回 `data` 数组；选定目标后才用真实 `id` 重建或 `use` 切换|
+|还不知道有哪些可用空间|省略 `workspace_id` 构造客户端或 CLI → `list` → 记下目标 `id`|返回 `data` 数组；选定目标后用真实 `id` 重建客户端或在客户端上 `use` 切换|
 |确认当前身份能看到哪些工作空间|`list`|返回 `data` 数组，元素含 id、name、admin、capacity、ctime、description、tags、users；空数组表示没有可用空间，未登录会抛 `not_logged_in` 而不是空数组|
 |把后续操作切到另一个工作空间|`list` 记下目标 `id` → `use` 传 ID 或名称 → 切换后先复读目标空间内的资源|返回被选中的空间记录，且客户端 `workspace_id` 与后续请求头都指向它|
 |对多个工作空间循环处理|逐个建 `Client`，或在一个客户端上 `use` 逐个切换|每次切换后重新解析资源；不要跨空间复用已解析的资源 ID 或名称|
