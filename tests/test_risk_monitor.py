@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from test_client import service
+from test_client import catalog_routes, service
 from rqamsh.errors import HarnessError
 
 
@@ -22,13 +22,8 @@ def _post_body(state):
 def test_clauses_sends_singular_level_and_resolved_ids(service):
     """预警等级线上参数名是单数 level；产品筛选必须下发解析后的 ID 逗号串。"""
     client, state = service
-    state["responses"] = [
-        (200, {"products": [{"id": "p1", "name": "own", "user_id": 1}]}),
-        (200, {"id": "p1", "name": "own", "user_id": 1}),
-        (200, {"product_groups": []}),
-        (200, []),
-        (200, []),
-    ]
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "own", "user_id": 1}])
+    state["responses"] = [(200, [])]
     assert client.risk_monitor.clauses(product_ids=["own"], levels=[1, 3]) == []
     query = _query(state)
     assert "level=1%2C3" in query

@@ -1,6 +1,6 @@
 # tests 目录：客户端契约测试
 
-`pytest tests` 只测一件事：**`rqamsh` 客户端的契约**——请求发到哪个端点、参数怎么映射、返回与错误怎么原样交回。当前 225 项，全部用进程内脚本化 HTTP 服务端跑，不连真实 AMS、不需要凭据。
+`pytest tests` 只测一件事：**`rqamsh` 客户端的契约**——请求发到哪个端点、参数怎么映射、返回与错误怎么原样交回。当前 243 项，全部用进程内脚本化 HTTP 服务端跑，不连真实 AMS、不需要凭据。
 
 **不在范围内的两类**（详见[必要边界](../docs/index.md#必要边界)）：
 
@@ -16,7 +16,7 @@ python -m pip install -e .
 python -m pytest tests -q
 ```
 
-146 个公开操作全部有调用式契约测试（请求形状 + 返回/错误）；夹具里的响应结构取自真机证据（证据留本地，不随仓库提交）。用例文件按业务块划分（`test_products.py`、`test_balances.py`、`test_analytics.py`、`test_permissions.py`、`test_workspaces.py`、`test_trades.py` …，共 21 个文件），`test_client.py` 提供共用的 `service` fixture：它启动一个真实的 `ThreadingHTTPServer`，测试把期望响应序列塞进去，客户端按真实 HTTP 走一遍，断言**实际发出的请求**（method / path / body / headers）与返回或异常。因此它验证的是客户端不偷改语义，不验证服务端算得对不对。
+146 个公开操作全部有调用式契约测试（请求形状 + 返回/错误）；夹具里的响应结构取自真机证据（证据留本地，不随仓库提交）。用例文件按业务块划分（`test_products.py`、`test_balances.py`、`test_analytics.py`、`test_permissions.py`、`test_workspaces.py`、`test_trades.py` …，共 21 个文件），`test_client.py` 提供共用的 `service` fixture：它启动一个真实的 `ThreadingHTTPServer`；业务请求按脚本顺序出队，资源目录端点按路径匹配——`catalog_routes(...)` 一次登记三个集合端点与逐项详情（目录构建是并发的，到达顺序不确定，按顺序出队必然错配）；测试把期望响应塞进去，客户端按真实 HTTP 走一遍，断言**实际发出的请求**（method / path / body / headers）与返回或异常。因此它验证的是客户端不偷改语义，不验证服务端算得对不对。
 
 ## 本机联调：注入管理员给的令牌
 

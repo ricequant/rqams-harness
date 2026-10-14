@@ -4,20 +4,13 @@ import json
 
 import pytest
 
-from test_client import service
+from test_client import catalog_routes, service
 from rqamsh.errors import HarnessError
 
 
 def _catalog(products, units=None, groups=()):
-    """按目录构建顺序生成响应：产品列表与逐个详情、组列表与逐个详情、资产单元。"""
-    responses = [(200, {"products": list(products)})]
-    for row in products:
-        responses.append((200, row))
-    responses.append((200, {"product_groups": list(groups)}))
-    for row in groups:
-        responses.append((200, row))
-    responses.append((200, units or []))
-    return responses
+    """登记目录路由：产品与产品组的逐项详情由列表项派生，资产单元原样给出。"""
+    return catalog_routes(products=products, groups=groups, units=units or ())
 
 
 _OWN = {"id": "p1", "name": "own", "user_id": 1}
@@ -50,7 +43,9 @@ def test_field_exists_requires_exactly_one_field(service):
 def test_enable_shares_posts_three_mappings_and_waits_for_task(service):
     """份额转换提交三段映射体，并按 task_id 轮询到终态。"""
     client, state = service
-    state["responses"] = _catalog([_OWN]) + [(202, {"task_id": "task-a"}), (200, {"status": "SUCCESS", "progress": 1, "data": None})]
+    state["catalog"] = _catalog([_OWN])
+    # 轮询复用提交路径（只多一个 task_id query），属于普通业务 GET，走业务队列。
+    state["responses"] = [(202, {"task_id": "task-a"}), (200, {"status": "SUCCESS", "progress": 1, "data": None})]
     result = client.products.enable_shares(
         "own", {"A": {"effective_date": "2026-01-01"}}, {"ce1": {"A": 100.0}}, {"ue1": {"A": 10.0}}
     )
@@ -81,13 +76,12 @@ def test_valuation_report_missing_dates_filters_unreadable_products(service):
         {"product_id": "p1", "product_name": "own", "missing_date_count": 2},
         {"product_id": "p2", "product_name": "hidden", "missing_date_count": 5},
     ]
-    state["responses"] = [
-        (200, rows),
-        (200, {"products": [{"id": "p1", "name": "own", "user_id": 1}, {"id": "p2", "name": "hidden", "user_id": 2}]}),
-        (200, {"id": "p1", "name": "own", "user_id": 1}),
-        (403, {"message": "无权访问"}),
-        (200, {"product_groups": []}), (200, []),
-    ]
+    state["responses"] = [(200, rows)]
+    # p2 的详情读不到（403），所以它不进目录，汇总结果里同样要被排除。
+    state["catalog"] = catalog_routes(
+        products=[{"id": "p1", "name": "own", "user_id": 1}, {"id": "p2", "name": "hidden", "user_id": 2}],
+        denied=["p2"],
+    )
     assert client.products.valuation_report_missing_dates() == [rows[0]]
     assert any(item[1] == "/api/rqams/v2/products:valuation_report_missing_date" for item in state["requests"])
 
@@ -95,13 +89,13 @@ def test_valuation_report_missing_dates_filters_unreadable_products(service):
 def test_uploaded_file_hashes_resolves_ids_without_permission_lookup(service):
     """解析只读目录，不额外查询权限：他人产品照常解析，请求按解析后的 ID 提交。"""
     client, state = service
-    state["responses"] = _catalog([_OWN]) + [(200, [{"product_id": "p1", "hash_list": ["h1"]}])]
+    # 同一客户端只登记一份目录（含他人产品）：写入会作废缓存，第二次解析由同一路由表重建。
+    state["catalog"] = _catalog([_OWN, {"id": "p2", "name": "shared", "user_id": 2}])
+    state["responses"] = [(200, [{"product_id": "p1", "hash_list": ["h1"]}])]
     assert client.products.uploaded_file_hashes(["own"], "trade") == [{"product_id": "p1", "hash_list": ["h1"]}]
     assert json.loads(state["requests"][-1][2]) == {"product_ids": ["p1"], "file_type": "trade"}
     state["requests"].clear()
-    state["responses"] = _catalog([_OWN, {"id": "p2", "name": "shared", "user_id": 2}]) + [
-        (200, [{"product_id": "p2", "hash_list": []}]),
-    ]
+    state["responses"] = [(200, [{"product_id": "p2", "hash_list": []}])]
     assert client.products.uploaded_file_hashes(["shared"], "trade") == [{"product_id": "p2", "hash_list": []}]
     assert json.loads(state["requests"][-1][2]) == {"product_ids": ["p2"], "file_type": "trade"}
 
@@ -118,12 +112,14 @@ def test_uploaded_file_hashes_rejects_unknown_file_type(service):
 def test_closing_entry_put_and_delete_use_distinct_semantics(service):
     """封账写字段、解封删除字段，两者都是空响应。"""
     client, state = service
-    state["responses"] = _catalog([_OWN]) + [(200, b"")]
+    state["catalog"] = _catalog([_OWN])
+    state["responses"] = [(200, b"")]
     assert client.products.set_closing_entry("own", "2026-08-31") is None
     request = state["requests"][-1]
     assert (request[0], request[1]) == ("PUT", "/api/rqams/v2/products/p1/closing_entry")
     assert json.loads(request[2]) == {"closing_date": "2026-08-31"}
-    state["responses"] = _catalog([_OWN]) + [(200, b"")]
+    # 每次写入都作废目录缓存，第二次解析由同一路由表重建。
+    state["responses"] = [(200, b"")]
     assert client.products.clear_closing_entry("own") is None
     assert (state["requests"][-1][0], state["requests"][-1][1]) == ("DELETE", "/api/rqams/v2/products/p1/closing_entry")
 
@@ -131,12 +127,13 @@ def test_closing_entry_put_and_delete_use_distinct_semantics(service):
 def test_recompute_submits_product_ids_and_optional_start_date(service):
     """重算按产品 ID 数组提交，只有显式给出起点时才携带 start_date。"""
     client, state = service
-    state["responses"] = _catalog([_OWN]) + [(200, {"submit_recompute_count": 1})]
+    state["catalog"] = _catalog([_OWN])
+    state["responses"] = [(200, {"submit_recompute_count": 1})]
     assert client.products.recompute("own") == {"submit_recompute_count": 1}
     submit = state["requests"][-1]
     assert (submit[0], submit[1]) == ("POST", "/api/rqams/v2/products:recompute")
     assert json.loads(submit[2]) == {"product_ids": ["p1"]}
-    state["responses"] = _catalog([_OWN]) + [(200, {"submit_recompute_count": 1})]
+    state["responses"] = [(200, {"submit_recompute_count": 1})]
     client.products.recompute("own", start_date="2026-08-01")
     assert json.loads(state["requests"][-1][2]) == {"product_ids": ["p1"], "start_date": "2026-08-01"}
 
@@ -144,12 +141,13 @@ def test_recompute_submits_product_ids_and_optional_start_date(service):
 def test_compute_state_reads_state_without_waiting(service):
     """状态查询是无副作用的普通 GET，原样返回 state 与 execution_id，不轮询也不等待。"""
     client, state = service
-    state["responses"] = _catalog([_OWN]) + [(200, {"state": "normal", "execution_id": 376})]
+    state["catalog"] = _catalog([_OWN])
+    state["responses"] = [(200, {"state": "normal", "execution_id": 376})]
     assert client.products.compute_state("own") == {"state": "normal", "execution_id": 376}
     request = state["requests"][-1]
     assert (request[0], request[1]) == ("GET", "/api/rqams/v2/products/p1/compute_state")
     assert request[2] == b""
-    # 目录四次 + 状态一次：状态不是任务句柄，不追加任何轮询请求。
+    # 目录四条（三个集合 + 一条详情）+ 状态一次：状态不是任务句柄，不追加任何轮询请求。
     assert len(state["requests"]) == 5
 
 
@@ -157,12 +155,14 @@ def test_product_group_recompute_posts_group_ids_only(service):
     """产品组重算按组 ID 数组提交，产品选择器必须在写入前被类型检查拒绝。"""
     client, state = service
     group = {"id": "g1", "name": "grp", "user_id": 1}
-    state["responses"] = _catalog([], groups=[group]) + [(200, {"submit_recompute_count": 1})]
+    state["catalog"] = _catalog([], groups=[group])
+    state["responses"] = [(200, {"submit_recompute_count": 1})]
     assert client.product_groups.recompute("grp") == {"submit_recompute_count": 1}
     request = state["requests"][-1]
     assert (request[0], request[1]) == ("POST", "/api/rqams/v2/product_groups:recompute")
     assert json.loads(request[2]) == {"product_group_ids": ["g1"]}
-    state["responses"] = _catalog([_OWN])
+    # 换成只有自有产品的目录：产品选择器必须在写入前被类型检查拒绝，不发任何写入请求。
+    state["catalog"] = _catalog([_OWN])
     with pytest.raises(HarnessError) as error:
         client.product_groups.recompute("own")
     assert error.value.code == "unsupported_resource"

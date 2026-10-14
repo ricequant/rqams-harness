@@ -53,7 +53,7 @@ Python 签名：`rqamsh.products.list(*, fields: list[str] | None=None, sources:
 |`permissions[].permission`|本人权限级别|string（枚举）|—|请求人在该产品上的权限，取值见[权限级别](permissions.md#权限级别)|随父级记录返回；取 `forbidden` 表示该产品对请求人不可读，不代表它不会出现在别人的列表里|
 |`permissions[].is_owner`|是否本人资源|boolean|—|`true` 表示请求人是工作空间管理员或该产品创建者；`false` 表示仅通过他人分享获得|随父级记录返回；`true` 不等于权限更高，管理员对自己没有权限记录的产品也会得到 `true` 且 `permission` 为 `forbidden`|
 
-结果检查：用 products 中的 ID 选择后续操作目标。指定 fields 时仍返回 id；total 是可访问范围内数量，member_user_id 筛选不会授予额外权限。需要判断写入或导出能否执行时，用 permissions 中的授权行（`write`/`admin` 才可改），但不要假设它与 `products` 逐行对齐，也不要用「能读到」推断「能改」。
+结果检查：用 products 中的 ID 选择后续操作目标。指定 fields 时仍返回 id；total 是可访问范围内数量，member_user_id 筛选不会授予额外权限。需要判断写入或导出能否执行时，用 permissions 中的授权行（`write`/`admin` 才可改），但不要假设它与 `products` 逐行对齐，也不要用「能读到」推断「能改」。范围提醒：实盘/模拟由 `label` 表达（`live`/`paper`/`paper_trading`）；`product_state`、`closing_date`、`maturity_date`、`fund_code` 是与实盘属性彼此独立的维度。是否把已封账、已终止、已到期或未备案的产品算进本次范围属于业务口径，涉及这类范围时先向用户确认，不按字段名推断、也不默认排除。
 
 ```python
 result = rqamsh.products.list()
@@ -224,7 +224,7 @@ Python 签名：`rqamsh.products.compute_state(resource: str)`。
 |`state`|计算状态|string|—|服务端当前返回的表征计算状态的字段与取值|由数据决定；客户端原样透传，不校验取值、不补齐默认值，也不保证该键存在；与产品状态 `product_state` 不是同一枚举|
 |`execution_id`|计算任务执行序号|integer / null|—|服务端计算任务的执行序号，用于区分同一产品的不同次计算|由数据决定；只读，客户端原样透传，不补齐缺失值|
 
-结果检查：把返回状态与后续读取的头寸报表结合判断，状态未就绪时不要把相关估值当作已完成结果；保留 execution_id 并按[等待规则](connection.md)处理后续查询。此操作只查询一次状态，不等待、不轮询。
+结果检查：把返回状态与后续读取的头寸报表结合判断，状态未就绪时不要把相关估值当作已完成结果；内容未就绪时调用方需要稍后重查——重查的是 `compute_state` 这一次操作本身，而不是重新提交重算或其他操作，并保留 `execution_id` 作为诊断。此操作只查询一次状态，不等待、不轮询。
 
 ```python
 result = rqamsh.products.compute_state(resource='授权测试产品')

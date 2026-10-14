@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from test_client import service
+from test_client import catalog_routes, service
 
 
 def test_cli_failure_is_json_on_stderr():
@@ -19,9 +19,8 @@ def test_cli_json_input_partial_failure_preserves_successes(service, tmp_path):
     """真实CLI从UTF-8文件导入流水，部分失败返回可恢复结果及非零退出。"""
     client, state = service
     product = {"id": "p1", "name": "量化一号", "user_id": 1}
+    state["catalog"] = catalog_routes([product])
     state["responses"] = [
-        (200, {"products": [product]}), (200, product),
-        (200, {"product_groups": []}), (200, []),
         (200, [{"trade_id": "saved"}, {"err_msg": "不支持的资产"}]),
     ]
     source = tmp_path / "流水.json"
@@ -43,9 +42,8 @@ def test_cli_parses_json_array_for_union_string_parameters(service):
     """通配参数既可传逗号串也可传 JSON 数组，数组必须解析而不是按字符拼接。"""
     client, state = service
     product = {"id": "p1", "name": "量化一号", "user_id": 1}
+    state["catalog"] = catalog_routes([product])
     state["responses"] = [
-        (200, {"products": [product]}), (200, product),
-        (200, {"product_groups": []}), (200, []),
         (200, {"weights": []}),
     ]
     result = subprocess.run([

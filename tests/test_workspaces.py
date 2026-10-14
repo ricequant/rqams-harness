@@ -2,7 +2,7 @@
 
 import pytest
 
-from test_client import service
+from test_client import catalog_routes, service
 from rqamsh.errors import HarnessError
 
 
@@ -39,11 +39,12 @@ def test_list_maps_not_logged_in(service):
 def test_use_switches_by_name_or_id(service, workspace, expected):
     """按名称或 ID 切换后，身份属性与请求头同步，业务请求落到新空间。"""
     client, state = service
+    state["catalog"] = catalog_routes()
     state["responses"] = [(200, {"data": [dict(row) for row in _ROWS]})]
     assert client.workspaces.use(workspace)["id"] == expected
     assert client.workspace_id == expected
-    # 业务调用：目录为空时只发三条目录请求，随后是产品列表本身。
-    state["responses"] = [(200, {"products": []}), (200, {"product_groups": []}), (200, []), (200, {"products": [], "total": 0, "permissions": []})]
+    # 业务调用：目录为空；产品列表与目录集合端点同路径，该请求由目录路由返回。
+    state["responses"] = [(200, {"products": [], "total": 0, "permissions": []})]
     client.products.list()
     assert state["requests"][-1][:2] == ("GET", "/api/rqams/v2/products")
     assert state["requests"][-1][3]["X-AMS-Workspace"] == expected

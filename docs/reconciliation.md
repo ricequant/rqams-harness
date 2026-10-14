@@ -21,7 +21,7 @@
 
 例如托管报告与 AMS 同日净资产有差异：只保存报告可用于比较；采用估值表覆盖后，AMS 会按报告持仓和净值重建或调整该日状态。结果一致不代表原流水已经核对无误，差异来源仍需解释。
 
-是否采用报告由产品自身的 `data_source` 与 `auto_overwrite` 决定，规则见下节。自动对账 `auto` 与报告导入路径写的是同一份估值表覆盖输入，`undo_auto` 只删除该输入，不替代报告本身。
+是否采用报告由产品自身的 `data_source` 与 `auto_overwrite` 决定，规则见下节。自动对账 `auto` 与报告导入路径写的是同一份估值表覆盖输入，`undo_auto` 只删除该输入，不替代报告本身。这份覆盖输入写入或删除时，会同步把对应日期在 `reconciliation.list` 里的 `done` 置为 `true` 或 `false`，不区分该标记是否由人工写过。
 
 <a id="valuation-report-overwrite-setting"></a>
 
@@ -73,11 +73,11 @@
 
 |用户需求|操作顺序|完成条件|
 |---|---|---|
-|查看哪些日期缺估值表或持仓单|`reconciliation.list` 给出产品与区间 → 按 `lack`、`have_position_statement`、`done` 筛出待办|缺件与人工状态明确；状态只说明上传与标记情况，不判断差异金额|
+|查看哪些日期缺估值表或持仓单|`reconciliation.list` 给出产品与区间 → 按 `lack`、`have_position_statement`、`done` 筛出待办|缺件与人工状态明确；`done` 会随估值表覆盖的写入与撤销自动改写，状态只说明上传、覆盖与标记情况，不判断差异金额|
 |核对某日 AMS 与估值表的差异|确认数据源与当日报告 → 按需选择分组 `reconciliation.diff`|差异行逐组解释，或确认该组无差异；无差异行不等于业务无差错|
 |核对某日资产单元数量|`asset_units.list/get` 确认单元 → `reconciliation.asset_unit_diff` 看逐行差异，或 `positions_statement` 取一致性结论|差异行或结论与持仓单、头寸报表一致；拆分/送股提示需人工确认|
 |记录人工对账结果|`reconciliation.mark` 写入 `done`/`description` → `reconciliation.list` 读回|读回结果与写入一致；标记不触发重算|
-|采用或撤销估值表自动对账|确认授权与目标日期 → `reconciliation.auto` 或 `undo_auto` → `products.compute_state` → `balances.get`|计算状态为 `normal`，覆盖影响按[估值表覆盖](#valuation-report-overwrite)解释；调用返回不代表计算完成|
+|采用或撤销估值表自动对账|确认授权与目标日期 → `reconciliation.auto` 或 `undo_auto` → `products.compute_state` → `balances.get`|计算状态为 `normal`，覆盖影响按[估值表覆盖](#valuation-report-overwrite)解释；`reconciliation.list` 读回该日 `done` 为 `true`（`auto`）或 `false`（`undo_auto`）；调用返回不代表计算完成|
 
 ## API 使用约定
 
@@ -112,7 +112,8 @@ Python 签名：`rqamsh.reconciliation.list(resources: list[str], *, start_date:
 |`auto_reconciled`|该日是否存在自动对账（估值表覆盖）记录。|
 |`unit_net_value`、`acc_unit_net_value`|该日有估值表时的净值对照 `{ams, valuation_report}`；没有估值表时不出现。|
 |`have_position_statement`|该日已有持仓单的资产单元 ID 数组；没有时不出现。|
-|`description`、`done`|人工标记；未写时为 `""` 与 `false`。|
+|`description`|人工备注；未写时为 `""`。|
+|`done`|该日是否完成对账。写入估值表覆盖（`auto`、报告导入、开启自动覆盖、创建时的初始化报告）时由服务端置 `true`，对应覆盖被撤销或删除（`undo_auto`、删除报告、关闭自动覆盖）时置 `false`；也可用 `mark` 人工标记。未写时为 `false`。自动置位不区分来源，**人工标记会被覆盖写入或撤销清掉**，不能当永久确认。|
 |`lack`|缺件提示：当日有估值表且持仓单齐备时为空对象；缺件时给出 `type`（取值见[对账缺件类型](#reconciliationlacktype)），缺持仓单时附 `asset_unit_list`（资产单元名称）。|
 
 结果检查：先核对返回的产品与日期区间是否符合用户要求。`have_position_statement` 是资产单元 ID，`lack.asset_unit_list` 是资产单元名称，两者不能混用。`reconciliation_list` 为空时先核对区间内是否已有头寸报表，而不是直接判定已对上。
@@ -270,7 +271,7 @@ Python 签名：`rqamsh.reconciliation.mark(resource: str, *, date: str, done: b
 |---|---|---|---|---|---|
 |`effect_count`|实际修改条数|integer|条|本次实际修改的既有对账标记记录数|恒返回；只统计被修改的既有记录，新建记录时为 `0`，不能据此断定状态未变；见[写入结果](connection.md#write-result)|
 
-写入边界：只写对账标记，不触发重算，也不改变估值表覆盖或报告；已封账日期仍可标记。结果检查：用 `reconciliation.list` 读回该日 `done` 与 `description`，确认与写入一致；标记是人工确认，不构成对账通过的技术判定。
+写入边界：只写对账标记，不触发重算，也不改变估值表覆盖或报告；已封账日期仍可标记。该标记不是永久状态：写入或删除估值表覆盖会把该日 `done` 改写成 `true` 或 `false`。结果检查：用 `reconciliation.list` 读回该日 `done` 与 `description`，确认与写入一致；标记是人工确认，不构成对账通过的技术判定。
 
 ```python
 result = rqamsh.reconciliation.mark(resource='授权测试产品', date='2026-01-05', done=True, description='托管差异已确认')
@@ -294,7 +295,7 @@ Python 签名：`rqamsh.reconciliation.auto(resource: str, *, date: str)`。
 
 返回：空响应，客户端得到 `None`（服务端返回空串）。
 
-返回只表示覆盖已写入且计算已提交，**不代表计算完成**。结果检查：用 `products.compute_state` 等待计算，再以 `balances.get` 核对报告日及后续日期；`reconciliation.list` 中该日 `auto_reconciled` 应变为 true。
+返回只表示覆盖已写入且计算已提交，**不代表计算完成**。结果检查：用 `products.compute_state` 等待计算，再以 `balances.get` 核对报告日及后续日期；`reconciliation.list` 中该日 `auto_reconciled` 应变为 true，该日 `done` 同时被置为 `true`（写入覆盖即视为该日完成对账）。
 
 ```python
 result = rqamsh.reconciliation.auto(resource='授权测试产品', date='2026-01-05')
@@ -322,7 +323,7 @@ Python 签名：`rqamsh.reconciliation.undo_auto(resource: str, *, date: str)`�
 |---|---|---|---|---|---|
 |`effect_count`|实际删除条数|integer|条|本次实际删除的估值表覆盖记录数|恒返回；`0` 只表示本次未删除到记录，不证明该日从未自动对账；见[写入结果](connection.md#write-result)|
 
-结果检查：撤销同样要等待重算并用 `balances.get` 读回该日及后续日期；`undo_auto` 删除的是自动对账写入的覆盖输入，不是报告记录，也不是恢复覆盖前某份旧结果的承诺。
+结果检查：撤销同样要等待重算并用 `balances.get` 读回该日及后续日期；`undo_auto` 删除的是自动对账写入的覆盖输入，不是报告记录，也不是恢复覆盖前某份旧结果的承诺。撤销会把该日 `done` 复位为 `false`，包括此前人工标记的完成状态；没有覆盖记录被删除时不动 `done`。
 
 ```python
 result = rqamsh.reconciliation.undo_auto(resource='授权测试产品', date='2026-01-05')

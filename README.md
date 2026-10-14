@@ -27,6 +27,12 @@ python -m rqamsh trades upload --help
 
 安装后即可用它处理「取 AMS 已算好的业务数据、执行受控写入」类需求。文档与本地安装版本不一致时，以 `rqamsh schema` 的运行时输出为准。
 
+三处内容各自更新，都没有自动推送：
+
+- **技能族**：有更新后重跑同一段提示词覆盖旧副本；已装到本地的 `SKILL.md` 不会自动跟随技能仓库。
+- **契约文档**：每次任务开始时重新获取——重新 `git clone --depth 1`，或对已有的本地副本先 `git pull`；不要复用旧副本，`raw` 单页读的一直是默认分支上的最新内容。
+- **本包**：就地安装（editable）时拉取仓库最新代码后即生效，依赖有变化时重跑一次 `python -m pip install -e .`；操作是否变化以 `rqamsh schema` 为准。
+
 ## 只读入门
 
 ```python
@@ -66,7 +72,7 @@ rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> products list
 - 下载必须指定新输出文件，不覆盖已有文件。
 - **未暴露能力不等于阻塞**：模糊检索与打分、区间差分、加权贡献、报告渲染（Markdown/DOCX/PNG）、序列拼接、定时推送、写入前预览与幂等键属于调用方（Agent）职责；企业微信、邮件这类第三方通道的对接由对端官方接口决定，本项目不封装也不测试。两者都不算本项目缺口，真正的缺口只有两类：**取不到的数据**（服务端未持久化的配置版本/审批元数据、需服务端规则引擎的判定）与**外部凭证或公网入口**。边界判据见[必要边界](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md#必要边界)；客户端契约测试、只读联调配方与实测量级见 [`tests/README.md`](https://github.com/ricequant/rqams-harness/blob/main/tests/README.md)。
 
-**安全：**本版不代办登录，也不接收账号密码。请向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie）；工作空间默认使用可见空间中的第一个，需要时再切换，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。即使地址是本机，也可能操作正式业务数据；上传、修改、删除、重算前必须确认目标与授权，客户端资源筛选不能替代服务端授权。
+**安全：**本版不代办登录，也不接收账号密码。请向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie；从文件读到的地址与 `sid` 允许带行尾回车，客户端建连时会去掉首尾空白与回车换行）；工作空间默认使用可见空间中的第一个，需要时再切换，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。即使地址是本机，也可能操作正式业务数据；上传、修改、删除、重算前必须确认目标与授权，客户端资源筛选不能替代服务端授权。
 
 ## 从用户需求选择能力
 
@@ -100,7 +106,7 @@ rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> products list
 - [交易流水：结构化upsert与文件覆盖](https://github.com/ricequant/rqams-harness/blob/main/docs/trades.md)
 - [估值报告：同日覆盖白名单](https://github.com/ricequant/rqams-harness/blob/main/docs/valuation_reports.md)
 - [对账：状态、差异、人工标记与估值表覆盖](https://github.com/ricequant/rqams-harness/blob/main/docs/reconciliation.md)
-- [指标计算口径、年化、日历和缺失边界](https://github.com/ricequant/rqams-harness/blob/main/docs/analytics.md#indicators-returns)
+- [指标计算口径、年化、日历和缺失边界](https://github.com/ricequant/rqams-harness/blob/main/docs/analytics/metrics.md#indicators-returns)
 
 所有示例均需替换为用户获授权的身份和目标。字段、结果形状及限制见对应业务页；文档示例不是对任意环境的数据写入授权。
 

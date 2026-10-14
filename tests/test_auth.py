@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 import requests
 
+from test_client import catalog_response, catalog_routes
 from rqamsh.cli import main
 from rqamsh.client import Client
 from rqamsh.errors import HarnessError
@@ -16,18 +17,29 @@ WORKSPACE = "0123456789abcdef01234567"
 
 @pytest.fixture
 def endpoint():
-    """启动隔离 HTTP 服务，记录请求头并按测试给定脚本响应。"""
-    state = {"responses": [], "requests": []}
+    """启动隔离 HTTP 服务，记录请求头并按测试给定脚本响应。
+
+    目录端点（列举与逐项详情）按 `catalog_routes` 登记的路径匹配，其余请求按脚本顺序返回：
+    并发请求的到达顺序不可依赖，顺序脚本只留给串行的业务请求。
+    """
+    state = {"responses": [], "catalog": None, "requests": []}
 
     class Handler(BaseHTTPRequestHandler):
         """处理隔离服务请求。"""
 
         def _respond(self):
-            """记录请求并返回脚本响应。"""
+            """记录请求并返回脚本响应；目录端点按路径匹配，其余按脚本顺序。"""
             size = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(size)
             state["requests"].append((self.command, self.path, body, dict(self.headers)))
-            status, payload = state["responses"].pop(0)
+            prefix = "/api/rqams/v2/"
+            relative = self.path.split("?", 1)[0]
+            relative = relative[len(prefix):] if relative.startswith(prefix) else None
+            routed = catalog_response(state, self.command, relative) if relative is not None else None
+            if routed is None:
+                status, payload = state["responses"].pop(0)
+            else:
+                status, payload = routed
             data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -79,6 +91,34 @@ def test_session_contributes_only_cookies(endpoint):
             assert client.session.cookies.get("sid") == "xyz"
             assert "X-Injected" not in client.session.headers
             assert "X-AMS-User" not in client.session.headers
+            client.workspaces.list()
+    finally:
+        source.close()
+    assert state["requests"][-1][3]["Cookie"] == "sid=xyz"
+
+
+def test_line_endings_in_address_and_cookie_are_ignored(endpoint):
+    """从文件读到的地址与 cookie 带 Windows 行尾回车时仍能建连，请求头里不带回车。"""
+    url, state = endpoint
+    payload = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["responses"] = [(200, payload)]
+    with Client(url + "\r\n", workspace_id=WORKSPACE, cookies={"sid": "abc\r\n"}) as client:
+        assert client.base_url == f"{url}/api/rqams/v2"
+        assert client.workspaces.list() == payload
+    _, path, _, headers = state["requests"][-1]
+    assert path == "/api/user/v1/workspaces"
+    assert headers["Cookie"] == "sid=abc"
+
+
+def test_session_cookies_lose_line_endings_too(endpoint):
+    """session 注入路径同样去掉 cookie 值里的行尾回车。"""
+    url, state = endpoint
+    source = requests.Session()
+    source.cookies.set("sid", "xyz\r\n")
+    state["responses"] = [(200, {"data": []})]
+    try:
+        with Client(url, workspace_id=WORKSPACE, session=source) as client:
+            assert client.session.cookies.get("sid") == "xyz"
             client.workspaces.list()
     finally:
         source.close()
@@ -149,9 +189,10 @@ def test_workspace_defaults_to_first_listed(endpoint):
     """省略 workspace_id 时不预设分区：首次业务调用先列举并选中第一个，之后沿用该分区。"""
     url, state = endpoint
     listing = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["catalog"] = catalog_routes()
+    # 产品列表与目录集合端点同路径，那条业务响应由目录路由返回；此处脚本只服务空间列举。
     state["responses"] = [
         (200, listing),
-        (200, {"products": []}), (200, {"product_groups": []}), (200, []),
         (200, {"products": [], "total": 0, "permissions": []}),
     ]
     with Client(url, cookies={"sid": "abc"}) as client:
@@ -162,10 +203,6 @@ def test_workspace_defaults_to_first_listed(endpoint):
         assert client.workspace_id == WORKSPACE
         assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
         requests_before = len(state["requests"])
-        state["responses"] = [
-            (200, {"products": []}), (200, {"product_groups": []}), (200, []),
-            (200, {"products": [], "total": 0, "permissions": []}),
-        ]
         client.products.list()
         assert client.workspace_id == WORKSPACE
         assert state["requests"][requests_before][:2] == ("GET", "/api/rqams/v2/products")
@@ -187,15 +224,13 @@ def test_cli_defaults_to_first_workspace(endpoint, capsys, monkeypatch):
     monkeypatch.delenv("RQAMSH_WORKSPACE_ID", raising=False)
     url, state = endpoint
     listing = {"data": [{"id": WORKSPACE, "name": "样例空间"}]}
+    state["catalog"] = catalog_routes()
     state["responses"] = [(200, listing)]
     assert main(["--base-url", url, "--cookie", "sid=abc", "workspaces", "list"]) == 0
     assert json.loads(capsys.readouterr().out) == listing
     assert "X-AMS-Workspace" not in state["requests"][-1][3]
-    state["responses"] = [
-        (200, listing),
-        (200, {"products": []}), (200, {"product_groups": []}), (200, []),
-        (200, {"products": [], "total": 0, "permissions": []}),
-    ]
+    # 产品列表与目录集合端点同路径，那条业务响应由目录路由返回；此处脚本只服务空间列举。
+    state["responses"] = [(200, listing), (200, {"products": [], "total": 0, "permissions": []})]
     assert main(["--base-url", url, "--cookie", "sid=abc", "products", "list"]) == 0
     capsys.readouterr()
     assert state["requests"][-1][3]["X-AMS-Workspace"] == WORKSPACE
@@ -204,12 +239,7 @@ def test_cli_defaults_to_first_workspace(endpoint, capsys, monkeypatch):
 def test_catalog_is_not_filtered_locally(endpoint):
     """目录不做本地归属过滤：他人的资源也能解析，可见性交给服务端与网关。"""
     url, state = endpoint
-    state["responses"] = [
-        (200, {"products": [{"id": "p1", "name": "他人产品", "user_id": 999}]}),
-        (200, {"id": "p1", "name": "他人产品", "user_id": 999}),
-        (200, {"product_groups": []}),
-        (200, []),
-    ]
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "他人产品", "user_id": 999}])
     with Client(url, workspace_id=WORKSPACE, cookies={"sid": "abc"}) as client:
         assert client.resolve("他人产品", {"product"}).id == "p1"
     assert all("/permissions" not in item[1] for item in state["requests"])

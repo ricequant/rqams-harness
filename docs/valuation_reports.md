@@ -27,7 +27,7 @@
 
 两者都与[资产单元持仓单](positions_statements.md)不同：资产单元持仓单挂在资产单元上，只服务数量核对，不参与估值，也不触发重算。
 
-两种形态的删除也是各自独立的方法：[删除估值报告](#delete) 按日期删除报告、元数据并取消该日的自动估值表覆盖，[删除产品持仓表](positions_sheets.md#delete) 只删持仓表记录，不动报告与覆盖；两者都按日期而不是记录 ID 删除，都会触发必要重算，返回的 `effect_count` 都只统计自己那一类记录。
+两种形态的删除也是各自独立的方法：[删除估值报告](#delete) 按日期删除报告、元数据并取消该日的自动估值表覆盖（该日 `done` 随之复位为 `false`），[删除产品持仓表](positions_sheets.md#delete) 只删持仓表记录，不动报告与覆盖；两者都按日期而不是记录 ID 删除，都会触发必要重算，返回的 `effect_count` 都只统计自己那一类记录。
 
 字段逐项见[估值报告字段](fields/valuation_reports.md)。
 
@@ -38,7 +38,7 @@
 |核对某日是否有托管报告|`list` 明确日期范围；需要原始内容时取 valuation_report_id 调 `download`|元数据日期、source 和原文件一致；列表本身不包含完整报告持仓|
 |建立或补充估值报告输入|核对产品数据源 → 准备一份 JSON 或受支持文件 → `upload` → `list`|检查 err_msg、返回日期和记录 ID，并确认报告存在；有效报告仍可能附有解析错误|
 |替换已导入的错误报告|先 list/download 留存 → 核对文件实际日期 → 用 replace_dates 精确允许覆盖后 upload|目标日期报告已更新，其他日期不受白名单本身影响；再核对产品头寸报表|
-|删除误导入报告|确认授权及日期 → `delete(dates=...)` → `list`|目标报告已移除，相关自动估值表覆盖影响已核对；删除参数不是报告 ID|
+|删除误导入报告|确认授权及日期 → `delete(dates=...)` → `list`|目标报告已移除，相关自动估值表覆盖影响已核对，且该日 `done` 已复位为未完成对账；删除参数不是报告 ID|
 |定位需要补导的日期|`missing_dates` 取缺失交易日 → 与应覆盖区间核对 → 逐日 `upload` → 再次 `missing_dates` 复核|返回日期均已补导或被明确排除，且未把缺失日期当作零净值|
 
 导入保存与采用估值表覆盖是两个完成条件。适用数据源、自动覆盖设置与初始化例外见[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)；覆盖的影响、核对流程与自动对账见[对账](reconciliation.md#valuation-report-overwrite)。

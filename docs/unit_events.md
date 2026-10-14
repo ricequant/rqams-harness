@@ -11,7 +11,7 @@
 |用户需求|操作顺序|完成条件|
 |---|---|---|
 |查看某产品的手工与自动份额事件|`list` 限定日期|手工项来源为 manual、自动项折叠为 auto；两类都在同一个数组里，按日期倒序|
-|核对某日份额变动与当日份额|`list` 读取 unit_changes 的申购、赎回与 units|当日 units 来自估值结果，与事件份额是两回事；没有估值结果时该字段为空|
+|核对某日份额变动与当日份额|`list` 读取 unit_changes 的申购、赎回与 units|当日 units 来自估值结果，与事件份额是两回事；没有估值结果时该字段为空，属依赖估值未产出，见[未就绪与缺输入](connection.md#unready-inputs)|
 |录入一笔或一批手工申购、赎回|准备 JSON，必含 unit_event_type、date、units → `create` → `list` 复核|effect_count 与预期条数一致；服务端不返回新记录 ID，须用 list 取回 ID|
 |更正手工事件的份额|`list` 取得手工事件 ID → `update` 提交两个份额字段 → `list` 复核|该事件的申购或赎回份额已按提交值更新；自动事件 ID 会得到 404|
 |删除误录的手工事件|`list` 确认手工事件 ID → `delete` → 重新查询|effect_count 与所选条数一致；自动事件不受影响，删除不可撤销|
@@ -45,9 +45,9 @@ Python 签名：`rqamsh.unit_events.list(resource: str, *, start_date: str | Non
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |`daily_units`|手工与自动事件列表|array（object）|—|手工事件与自动事件的合并列表，按日期倒序；元素为一条[份额事件](fields/unit_events.md#unitevent)：`date`(YYYY-MM-DD)、`subscription_units` / `redemption_units`(number 或空，份)、`source`(枚举；查询返回只出现 `manual` 与 `auto`)、`product_share`(string 或空)、`id`(字符串 ID)|恒返回；不含 `product_id`|
-|`unit_changes`|逐日份额变动|array（object）|—|按日期把当日全部事件合计；元素为一条[逐日份额变动](fields/unit_events.md#uniteventchange)：`product_id`(字符串 ID)、`date`、`subscription_units` / `redemption_units`(number，份)、`units`(number 或空，份)|恒返回；此项含 `product_id`，`units` 来自估值结果|
+|`unit_changes`|逐日份额变动|array（object）|—|按日期把当日全部事件合计；元素为一条[逐日份额变动](fields/unit_events.md#uniteventchange)：`product_id`(字符串 ID)、`date`、`subscription_units` / `redemption_units`(number，份)、`units`(number 或空，份)|恒返回；此项含 `product_id`，`units` 来自估值结果，为 `null` 表示该日依赖的估值尚未产出|
 
-结果检查：需要修改或删除时只能使用 source 为 manual 的 id；单位净值与金额属于托管事件，不要在本方法的结果里找。
+结果检查：需要修改或删除时只能使用 source 为 manual 的 id；单位净值与金额属于托管事件，不要在本方法的结果里找。`unit_changes[].units` 为 `null` 表示该日依赖的估值尚未产出，不要把它当作零份额；按[未就绪与缺输入](connection.md#unready-inputs)确认计算状态后就绪再读同一结果。
 
 ```python
 result = rqamsh.unit_events.list(resource='授权测试产品', start_date='2026-01-01', end_date='2026-01-31')

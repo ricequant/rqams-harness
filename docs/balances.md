@@ -2,7 +2,7 @@
 
 `balances` 的公开读取操作分四类：单日入口 `get`（单资源或批量）与历史/盘中时序 `series`，`previous_summary`、`previous_summaries` 读取上一交易日概览，`export_file`、`export_snapshot` 导出工作簿，`field_earliest_date`、`field_earliest_dates` 查询字段最早存在日期。`get` 根据 `date`、资源类型和请求参数选择历史或实时底层查询；调用方不选择模式，也不需要知道底层 HTTP 路由。该收敛只发生在 Harness 客户端，AMS 服务端既有 HTTP/YApi 端点不改动。
 
-头寸报表描述产品或产品组某一业务时点的资产、负债、净资产、净值和持仓。实时结果用于观察最新可用估值状态；历史结果用于可重复的日终核对。字段含义、计算口径和分类树见[头寸字段与计算](fields/balances.md)，区间业绩分析见[指标公式](analytics.md#indicators-returns)。
+头寸报表描述产品或产品组某一业务时点的资产、负债、净资产、净值和持仓。实时结果用于观察最新可用估值状态；历史结果用于可重复的日终核对。字段含义、计算口径和分类树见[头寸字段与计算](fields/balances.md)，区间业绩分析见[指标公式](analytics/metrics.md#indicators-returns)。
 
 ## 从用户需求到操作
 
@@ -13,14 +13,14 @@
 |解释产品组各成员及权重|实时 `get`，资源为产品组，传 `include_component_weight_view=True`|按成员产品 ID→成员对象读取；保留每个成员的 `product_weight` 和错误信息，不能摊平成一个组报表。|
 |只交付少数顶层字段|`get`，传非空 `fields`，例如 `['total_equity', 'unit_net_value']`|只使用实际返回的字段；服务端缺失字段不补 `null`，已返回的 `null` 原样保留。|
 |查看历史变化或逐日对账|`series`，明确 `start_date`/`end_date`；用 `position_fields` 选择额外持仓字段|按逐日结果检查日期覆盖与缺失；不能把缺失日期补成零头寸报表。|
-|快速查看最近一个已结算交易日的概览|`previous_summary`（单个）或 `previous_summaries`（批量）|核对返回资源与概览字段；估值未就位的资源不出现，批量失败项在 `error_messages` 中。|
+|快速查看最近一个已结算交易日的概览|`previous_summary`（单个）或 `previous_summaries`（批量）|核对返回资源与概览字段；估值未就位的资源不出现，批量失败项在 `error_messages` 中。概览用于观察最近一个已结算交易日，不能替代当日实时结果或指定历史日期的结果。|
 |把持仓全景交给线下核对|`export_file` 指定输出路径，必要时传过去的 `date`|文件已落盘且字节数与服务端一致；目标文件已存在时不覆盖。|
 |一次读取多只产品/产品组的当天截面|`get`，第一个参数传数组；只给 `fields`|按资源 ID 读取结果，并检查 `pending_valuation` 与 `error_messages` 是否都为空。|
 |导出实时监控快照|单资源用 `export_snapshot(resource, output)`；多资源传数组并用 `previous_trading_day` 取上一交易日口径|文件已落盘；单资源与多资源接受的参数不同，交叉传入会被拒绝。|
 |看盘中逐时点变动|`series`，省略 `end_date`（盘中分支），按需传 `benchmark_id`|得到当日分时序列 `asset_series` 与区间起止；盘中序列没有 `start_date`、也不接受 `position_fields`。|
 |确认某字段从哪天开始有数据|`field_earliest_date` 或 `field_earliest_dates`，只传产品|返回最早日期；产品组会被拒绝，不能把空结果当成「从未有数据」。|
 
-先确认产品已有匹配数据源的流水或估值报告、产品组已配置成员。无数据、字段缺失、等待超时或未就绪时应报告缺口，不输出零净资产结论。需要可重复对账时必须传过去的业务日期；当天和未传日期都是实时语义，不能用来冒充某日的历史结算结果。
+先确认产品已有匹配数据源的流水或估值报告、产品组已配置成员。无数据、字段缺失、等待超时或未就绪时应报告缺口，不输出零净资产结论，也不得改用上一交易日概览或邻近日期报表替代当日结果。需要可重复对账时必须传过去的业务日期；当天和未传日期都是实时语义，不能用来冒充某日的历史结算结果。
 
 ## API 使用约定
 
@@ -38,7 +38,7 @@ Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连�
 - `date=北京时间当天`：同样走实时语义；它不是强制读取日终历史结果的开关。
 - `date=过去日期`：读取历史头寸报表，适合对账和复现。
 - 日期必须是严格的 `YYYY-MM-DD`；未来日期、时间戳和无效日期在客户端以 `invalid_argument` 拒绝。
-- 实时结果的实际业务归属以返回值为准。夜盘可能归属下一交易日，缓存的实时行情也可能早于请求时间；应同时检查返回日期、`update_time`，以及期货/期权是否已取到结算价（持仓 `has_settlement`，根级看 `all_futures_options_has_settlement`）；「结算」的四种含义见[结算类字段词义](fields/balances.md#settlement)。
+- 实时结果的实际业务归属以返回值为准。夜盘可能归属下一交易日，缓存的实时行情也可能早于请求时间；应同时检查返回日期、`update_time`，以及期货/期权是否已取到结算价（持仓 `has_settlement`，根级看 `all_futures_options_has_settlement`）；「结算」的四种含义见[结算类字段词义](fields/balances.md#settlement)。`has_settlement` 为 `false` 只表示这次返回里对应期货/期权合约还没有行情结算价（盘中普遍如此，日终才有），属行情状态，不等于整条结果未就绪——结果是否就绪看 `pending_valuation` 与 `error_messages`。需要结算价的口径据此标注本次结果不含结算价，等行情更新后重读同一操作；不依赖结算价的字段照常交付。两者都不得改用上一交易日概览替代当日结果。
 
 对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求可以使用净值摘要路由。夜盘或周期未知的产品绝不因传了当天日期而误走历史摘要：展示期货冲销项时，Harness 改用不带 `date` 的 `asset_snapshot_summary`；不展示时改用不带 `date` 的 `balance`，并要求头寸读取权限。此为内部路由选择，不是额外的公开操作。
 
@@ -86,7 +86,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 |`status`|任务状态|string（枚举）|—|服务端任务包装的外层状态|由数据决定：部分内部路由返回任务包装时原样保留，不拆包；见[任务终态 JSON](connection.md#task-result)|
 
 - 分类树的分类节点除 `name`、`level_type`、`children` 外，带的是同名汇总值（`market_value`、`daily_pnl`、`acc_pnl`、`weight`、`contribute_returns`、`floating_pnl` 等）：字段名与[持仓明细](fields/balances.md#position) 相同，口径是整层汇总，不能当逐仓值使用，也不能与叶子相加。根节点的 `daily_pnl_rate` 实际是头寸 `daily_returns`、`daily_pnl` 是产品层口径，与叶子同名字段不同源。
-- 行业分类（`shenwan_level_1`、`shenwan_level_2`、`zx_level_1`、`zx_level_2`）节点上的 `benchmark_returns` 与 `excess_returns` 是**按当前行情快照**算出的行业基准收益（该层成分股按权重加权），与请求的 `date` 无关；请求历史日期时这两个键仍给当日口径。需要历史区间或逐日的行业超额，走 [业绩归因](analytics.md#create_attribution) 的区间行业归因，或自行按 `market_data.benchmark_returns` 与行业分类计算，不要直接采用历史日期下分类节点的这两个键。
+- 行业分类（`shenwan_level_1`、`shenwan_level_2`、`zx_level_1`、`zx_level_2`）节点上的 `benchmark_returns` 与 `excess_returns` 是**按当前行情快照**算出的行业基准收益（该层成分股按权重加权），与请求的 `date` 无关；请求历史日期时这两个键仍给当日口径。需要历史区间或逐日的行业超额，走 [业绩归因](analytics/attribution.md#create_attribution) 的区间行业归因，或自行按 `market_data.benchmark_returns` 与行业分类计算，不要直接采用历史日期下分类节点的这两个键。
 - 成员权重视图：成员报表不能合并或摊平成产品组报表；即使投影不包含它，成员对象的 `product_weight` 与结果中的 `error_messages`、`pending_valuation` 仍会保留。
 - 成员权重的完整性只能由两个诊断键共同判定：服务端在存在错误信息时**不会计算权重**，本次响应里所有成员都没有 `product_weight`；估值未就绪的成员还会被静默跳过，此时同样不返回任何 `product_weight`。因此“权重完整”= `error_messages` 为空 **且** `pending_valuation` 为空；只看其中一项会把残缺成员集合误读成完整权重。
 - 过去日期且指定字段：Harness 可内部额外请求 `date` 校验，但返回仍只保留调用方选定字段。实际日期为其他非空日期时抛出 `historical_date_mismatch`；`details` 包含 `requested_date`、`actual_date` 和原始响应。没有 `date` 或其为 `null` 时保留原始缺失语义。
@@ -107,7 +107,7 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 ```
 
 - 结果为资源 ID → 汇总的映射加两个诊断键，键形与返回条件见上表 `{资源 ID}`、`pending_valuation`、`error_messages` 三行。
-- 两个诊断键都为空才表示本次请求全部就绪；缺失且不在 `error_messages` 中的资源说明估值尚未触达，需要稍后重试，不能当作零头寸。
+- 两个诊断键都为空才表示本次请求全部就绪；缺失且不在 `error_messages` 中的资源说明估值尚未触达，按[未就绪与缺输入](connection.md#unready-inputs)稍后重试，不能当作零头寸。批量与成员权重视图的重试都按本页[组合限制与错误](#组合限制与错误)的要求提交同一请求，不得改用上一交易日概览或邻近日期报表替代。
 - `fields` 以数组下发，服务端按字段名过滤；该路由不接受日期、分类、基准与成员视图参数。
 
 ### 内部路由与权限
@@ -140,7 +140,7 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 |数组形态传入日期、分类、基准或成员视图参数|`invalid_argument`|批量实时截面只支持 `fields`；需要这些参数时逐资源调用单资源形态。|
 |字段最早日期传产品组|资源类型校验失败|改用产品；组没有该字段口径。|
 |权限不足|来自服务端或网关|按上表申请 `read_net_value` 或 `read_import_data`；不要替换成猜测的资源 ID。|
-|服务端尚在处理、等待超时、字段缺失或 `null`|结果尚未就绪或数据不可用|按[等待规则](connection.md)保留诊断并报告缺口；不得补零或反复查询代替缺失输入。|
+|服务端尚在处理、等待超时、字段缺失或 `null`|结果尚未就绪或数据不可用|按[未就绪与缺输入](connection.md#unready-inputs)保留诊断并报告缺口；不得补零或反复查询代替缺失输入。|
 
 过去日期的完整历史报表：
 
@@ -319,7 +319,7 @@ Python 签名：`rqamsh.balances.previous_summaries(product_or_group_ids: list[s
 |`{资源 ID}`|概览对象|object|—|单个资源上一交易日的概览，形状与 `previous_summary` 相同：`date`、概览字段与 `benchmark_returns`、`excess_returns`|由数据决定：只有估值就位的资源出现在映射中|
 |`error_messages`|失败原因|object（资源 ID → string）|—|按资源 ID 记录该项失败原因|由数据决定：只在存在失败项时出现，无失败项时该键整体不出现；逐项失败容器见[逐项失败容器](connection.md#item-errors)|
 
-结果检查：逐个资源确认是否出现在结果中；缺失且不在 `error_messages` 中说明估值未就位，应稍后重试或改查该资源的计算状态，不能当作零头寸。
+结果检查：逐个资源确认是否出现在结果中；缺失且不在 `error_messages` 中说明估值未就位，按[未就绪与缺输入](connection.md#unready-inputs)稍后重试或改查该资源的计算状态，不能当作零头寸。
 
 ```python
 result = rqamsh.balances.previous_summaries(product_or_group_ids=['授权测试产品', '授权测试产品组'])

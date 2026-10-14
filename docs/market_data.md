@@ -2,7 +2,7 @@
 
 本块提供估值与分析之外的**外部参照数据**：[内置基准](https://www.ricequant.com/doc/rqdata/python/indices-mod#rqdata-API-indices_list)及其收益序列、自定义基准的维护、[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)、[标的检索](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)与[实时行情快照](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-current_snapshot)。
 
-这些数据不参与产品估值：它们是判断“跑赢没有”“今天能不能交易”“这只代码到底是谁”的依据。等待与超时规则见[连接说明](connection.md)。基准收益序列用于比较业绩，交易日历用于对齐区间，标的检索用于把名称或拼音换成代码，实时快照只反映最近一笔行情。产品自身的收益与风险口径见[净值与收益指标](analytics.md#indicators-returns)，分析类视图见[持仓分析、业绩归因与组合对比](analytics.md#组合对比)。
+这些数据不参与产品估值：它们是判断“跑赢没有”“今天能不能交易”“这只代码到底是谁”的依据。等待与超时规则见[连接说明](connection.md)。基准收益序列用于比较业绩，交易日历用于对齐区间，标的检索用于把名称或拼音换成代码，实时快照只反映最近一笔行情。产品自身的收益与风险口径见[净值与收益指标](analytics/metrics.md#indicators-returns)，分析类视图见[持仓分析、业绩归因与组合对比](analytics/portfolio_analysis.md#组合对比)。
 
 本页涉及的外部数据调用与官方页面见 [RQData 官方调用来源](rqdata.md#rqdata-calls)。
 
@@ -26,7 +26,7 @@ Python 与 CLI 完成相同调用，连接与公共错误处理见[连接说明]
 - `benchmark_returns` 的 `include_customized` 只在为 `true` 时下发：服务端按字符串真值判断该参数，下发 `false` 会被当作真，从而把自定义基准混进结果，因此 Harness 省略该参数来表达“不含自定义基准”。
 - `benchmark_returns` 的 `start_date` 省略时服务端从 2020-01-01 起算，`end_date` 省略时算到今天；需要精确区间时显式给出。
 - 基准代码数组（`benchmark_ids`、`order_book_ids`）可传逗号串或数组；空串与空数组会被本地拒绝。
-- `benchmark_ids` 只写基准代码本身（如 `000300.XSHG`），**不要**写成[净值收益指标](analytics.md)基准参数的「类型,代码」形式。
+- `benchmark_ids` 只写基准代码本身（如 `000300.XSHG`），**不要**写成[净值收益指标](analytics/metrics.md)基准参数的「类型,代码」形式。
 - 自定义基准是写入操作：`create` 与 `update` 都会整体替换权重，`update` 是全量覆盖而不是局部合并；删除按基准 ID 执行。
 - 日历与行情取自外部数据源缓存，查询本身不改变任何产品数据。
 

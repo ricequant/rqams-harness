@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from test_client import service
+from test_client import catalog_routes, service
 from rqamsh.client import Client, ResourceRef
 from rqamsh.errors import HarnessError
 
@@ -200,13 +200,8 @@ def test_previous_summary_hits_product_and_group_routes(service):
     client, state = service
     product = {"id": "p1", "name": "own", "user_id": 1}
     group = {"id": "g1", "name": "组合", "user_id": 1}
-    catalog = [
-        (200, {"products": [product]}), (200, product), (200, {"product_groups": [group]}), (200, group), (200, []),
-    ]
-    state["responses"] = (
-        catalog + [(200, {"total_equity": 100, "benchmark_returns": 0.01})]
-        + catalog + [(200, {"total_equity": 300})]
-    )
+    state["catalog"] = catalog_routes([product], [group])
+    state["responses"] = [(200, {"total_equity": 100, "benchmark_returns": 0.01}), (200, {"total_equity": 300})]
     assert client.balances.previous_summary("own") == {"total_equity": 100, "benchmark_returns": 0.01}
     assert client.balances.previous_summary("组合") == {"total_equity": 300}
     overview = [item for item in state["requests"] if "get_previous_summary" in item[1]]
@@ -220,8 +215,8 @@ def test_previous_summaries_resolves_ids_and_passes_error_messages(service):
     """批量概览提交解析后的 ID，并原样保留未就位与失败诊断。"""
     client, state = service
     product = {"id": "p1", "name": "own", "user_id": 1}
+    state["catalog"] = catalog_routes([product])
     state["responses"] = [
-        (200, {"products": [product]}), (200, product), (200, {"product_groups": []}), (200, []),
         (200, {"p1": {"total_equity": 100}, "error_messages": {"p2": "估值未就位"}}),
     ]
     result = client.balances.previous_summaries(["own"])
@@ -236,17 +231,12 @@ def test_export_file_writes_bytes_and_rejects_existing_target(service, tmp_path)
     client, state = service
     product = {"id": "p1", "name": "own", "user_id": 1}
     target = tmp_path / "balance.xlsx"
-    state["responses"] = [
-        (200, {"products": [product]}), (200, product), (200, {"product_groups": []}), (200, []),
-        (200, b"xlsx-bytes"),
-    ]
+    state["catalog"] = catalog_routes([product])
+    state["responses"] = [(200, b"xlsx-bytes")]
     assert client.balances.export_file("own", str(target)) == {"path": str(target.resolve()), "size": 10}
     assert target.read_bytes() == b"xlsx-bytes"
     assert state["requests"][-1][1] == "/api/rqams/v2/products/p1/balance_file"
     state["requests"].clear()
-    state["responses"] = [
-        (200, {"products": [product]}), (200, product), (200, {"product_groups": []}), (200, []),
-    ]
     with pytest.raises(FileExistsError):
         client.balances.export_file("own", str(target))
     assert all("balance_file" not in item[1] for item in state["requests"])
@@ -262,16 +252,6 @@ def test_export_file_rejects_future_date_before_request(service, tmp_path):
     assert state["requests"] == []
 
 
-def _catalog(products, groups=()):
-    """按目录构建顺序生成响应：产品列表、逐个详情、组列表、逐个组详情、资产单元。"""
-    rows = [(200, {"products": [dict(row) for row in products]})]
-    rows.extend((200, dict(row)) for row in products)
-    rows.append((200, {"product_groups": [dict(row) for row in groups]}))
-    rows.extend((200, dict(row)) for row in groups)
-    rows.append((200, []))
-    return rows
-
-
 def _post_body(state):
     """返回最近一次 POST 请求的 JSON 体。"""
     raw = [item for item in state["requests"] if item[0] == "POST"][-1][2]
@@ -281,8 +261,9 @@ def _post_body(state):
 def test_batch_get_posts_ids_and_marks_pending_valuation(service):
     """批量分支走独立端点、体里只带资源数组并显式标注未就绪项。"""
     client, state = service
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1},
-                                   {"id": "p2", "name": "b", "user_id": 1}]) + [
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1},
+                                       {"id": "p2", "name": "b", "user_id": 1}])
+    state["responses"] = [
         (200, {"p1": {"total_equity": 120}, "error_messages": {"p2": "估值失败"}}),
     ]
     result = client.balances.get(["a", "b"])
@@ -292,10 +273,7 @@ def test_batch_get_posts_ids_and_marks_pending_valuation(service):
     assert state["requests"][-1][1].endswith("/asset_snapshot_summary")
     assert _post_body(state) == {"product_or_group_ids": ["p1", "p2"]}
 
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1},
-                                   {"id": "p2", "name": "b", "user_id": 1}]) + [
-        (200, {"p1": {"total_equity": 120}}),
-    ]
+    state["responses"] = [(200, {"p1": {"total_equity": 120}})]
     result = client.balances.get(["a", "b"])
     assert result["pending_valuation"] == ["p2"] and result["error_messages"] == {}
 
@@ -316,7 +294,8 @@ def test_export_snapshot_single_resource_is_synchronous(service, tmp_path):
     """单资源实时监控导出同步落盘；上一交易日口径只属于多资源端点。"""
     client, state = service
     target = tmp_path / "snapshot.xlsx"
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1}]) + [(200, b"snap-bytes")]
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1}])
+    state["responses"] = [(200, b"snap-bytes")]
     result = client.balances.export_snapshot("a", str(target), classifier="stock")
     assert result["size"] == len(b"snap-bytes") and target.read_bytes() == b"snap-bytes"
     assert "classifier=stock" in state["requests"][-1][1]
@@ -330,8 +309,9 @@ def test_export_snapshot_multiple_resources_split_ids_and_wait(service, tmp_path
     """多资源导出按类型拆分 ID、走概览文件端点并在任务终态后落盘。"""
     client, state = service
     target = tmp_path / "overview.xlsx"
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1}],
-                                  [{"id": "g1", "name": "grp", "user_id": 1}]) + [
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1}],
+                                      [{"id": "g1", "name": "grp", "user_id": 1}])
+    state["responses"] = [
         (202, {"task_id": "t1"}), (200, b"overview-bytes"),
     ]
     result = client.balances.export_snapshot(["a", "grp"], str(target), previous_trading_day=True)
@@ -347,7 +327,8 @@ def test_export_snapshot_multiple_resources_split_ids_and_wait(service, tmp_path
 def test_series_realtime_branch_requires_clean_parameters(service):
     """盘中序列由省略截止日期触发，冲突参数与基准错配必须报错。"""
     client, state = service
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1}]) + [(200, {"asset_series": []})]
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1}])
+    state["responses"] = [(200, {"asset_series": []})]
     assert client.balances.series("a", benchmark_id="000905.XSHG") == {"asset_series": []}
     assert state["requests"][-1][1].endswith("/realtime_asset_series?benchmark_id=000905.XSHG")
 
@@ -368,14 +349,15 @@ def test_series_realtime_branch_requires_clean_parameters(service):
 def test_field_earliest_dates_only_accept_products(service):
     """字段最早日期端点只查产品；组 ID 会被服务端静默查空，必须在本地拒绝。"""
     client, state = service
-    state["responses"] = _catalog([{"id": "p1", "name": "a", "user_id": 1}]) + [
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1}],
+                                      [{"id": "g1", "name": "grp", "user_id": 1}])
+    state["responses"] = [
         (200, [{"product_id": "p1", "earliest_date": "2020-01-02"}]),
     ]
     assert client.balances.field_earliest_dates(["a"]) == [{"product_id": "p1", "earliest_date": "2020-01-02"}]
     assert _post_body(state) == {"product_ids": ["p1"], "field": "unit_net_value"}
     assert state["requests"][-1][1].endswith("/products/balance:query_field_existed_earliest_dates_by_product")
 
-    state["responses"] = _catalog([], [{"id": "g1", "name": "grp", "user_id": 1}])
     with pytest.raises(HarnessError) as error:
         client.balances.field_earliest_date(["grp"])
     assert error.value.code == "unsupported_resource"

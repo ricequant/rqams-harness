@@ -40,7 +40,7 @@ Python 签名：`rqamsh.product_groups.list()`。
 |---|---|---|---|---|---|
 |`product_groups`|可访问产品组列表|array（object 元素）|—|当前身份可访问的产品组；元素为产品组对象，键见本页 [`get`](#get) 返回表|恒返回；空数组表示当前身份没有可列出的组，不代表工作空间内没有其他组|
 
-结果检查：从 product_groups 中选择组 ID；空数组表示当前身份没有可列出的组，不证明其他成员或工作空间没有该组。
+结果检查：从 product_groups 中选择组 ID；空数组表示当前身份没有可列出的组，不证明其他成员或工作空间没有该组。列表里的成员摘要可能不全，需要完整成员时按组 ID 用 `get` 复核，缺失成员的判定方法见该操作的返回说明，不要用该次结果判定成员已不在组内。
 
 ```python
 result = rqamsh.product_groups.list()
@@ -72,7 +72,7 @@ Python 签名：`rqamsh.product_groups.get(resource: str)`。
 |`accessible`|组配置是否可用|boolean|—|成员未到期、未被删除且实时时段一致时为 `true`|恒返回；不表示调用方有读取权限|
 |`accessible_err_msg`|组不可用原因|array（string 元素）|—|逐条说明成员已到期、成员已删除、成员实时时段不一致|恒返回；`accessible` 为 `true` 时为空数组|
 
-结果检查：核对 product_ids、product_weights、benchmark 及日期。后续按唯一 ID 操作，避免同名组误选；组配置不等于成员产品配置。
+结果检查：核对 product_ids、product_weights、benchmark 及日期。后续按唯一 ID 操作，避免同名组误选；组配置不等于成员产品配置。以 `product_ids` 与 `products[].id` 的差集判断成员缓存是否缺失：`product_ids` 里有而 `products[].id` 未出现的成员，按[未就绪与缺输入](connection.md#unready-inputs)稍后重试同一读取，不要把缺失成员当作已不在组内或组配置不一致。
 
 ```python
 result = rqamsh.product_groups.get(resource='授权测试产品组')

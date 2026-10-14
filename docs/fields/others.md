@@ -71,8 +71,8 @@ JSON 中传值本身，例如 `"trade"`、`"long"`，不要传标题名称或中
 
 交易资产属性把 `asset_class` 归并成 11 个分组，只出现在返回结果的键名与展示字段里，不作为请求参数。同一分组有两种形态：
 
-- 英文值（[asset_weight](../analytics.md#asset_weight)）：`classifiers` 含 `trading_asset_class` 时 `classifier_weight[].weight[].name` 的值，以及 `trading_asset_class_weight_series` 的 `series_names`、`series[].{交易属性名}` 键名；
-- 中文名（[组合对比](../analytics.md#组合对比) 的 `group_allocation`、[交易分析](../analytics.md#交易分析) 的 `trading_analysis`）：`data` 的键名与 `asset_category` 字段值。
+- 英文值（[asset_weight](../analytics/holdings_analysis.md#asset_weight)）：`classifiers` 含 `trading_asset_class` 时 `classifier_weight[].weight[].name` 的值，以及 `trading_asset_class_weight_series` 的 `series_names`、`series[].{交易属性名}` 键名；
+- 中文名（[组合对比](../analytics/portfolio_analysis.md#组合对比) 的 `group_allocation`、[交易分析](../analytics/portfolio_analysis.md#交易分析) 的 `trading_analysis`）：`data` 的键名与 `asset_category` 字段值。
 
 |交易资产属性（英文值）|中文名|归入的 `asset_class`|备注|
 |---|---|---|---|

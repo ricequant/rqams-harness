@@ -27,10 +27,10 @@
 |`report_name`|报告名称|string|—|对外展示与导出文件名使用的名称：周报文件名取它，其他导出在 `name` 为空时兜底；不参与估值计算，与估值报告内容无关|—|
 |<a id="data-source"></a>`data_source`|数据来源|string（枚举）|—|数据源类型：`trade` 交易流水、`valuation_report` 估值报告、`trade_and_valuation_report` 混合；决定可导入数据与估值起点（纯估值报告源由报告建立起点，不能上传交易流水）。枚举[产品数据源](#productdatasource)|—|
 |`start_date`|起始日期|string|YYYY-MM-DD|产品估值与收益序列的起点；省略日期的指标与报告查询以起始日为默认起点，`recompute` 省略时从此重算；起始日收益率按 `AccNAV[当日]−1` 口径（见[头寸 daily_returns](balances.md#daily-returns)）|—|
-|`trading_start_date`|交易起始日期|string|YYYY-MM-DD|交易流水相关默认起点：按日期删除流水省略日期时从交易起始日算起，报告起始受其限制；指标指增特殊口径以它为基点（见[净值与收益指标](../analytics.md#indicators-returns)）|—|
+|`trading_start_date`|交易起始日期|string|YYYY-MM-DD|交易流水相关默认起点：按日期删除流水省略日期时从交易起始日算起，报告起始受其限制；指标指增特殊口径以它为基点（见[净值与收益指标](../analytics/metrics.md#indicators-returns)）|—|
 |`valuation_start_point`|估值计算起点|string / null|YYYY-MM-DD|混合数据源的估值计算起点，由服务端维护；创建与修改不提交|只读；服务端取它与 `start_date`、`closing_date`、`share_calc_start_date` 中的最早日期作为重算与估值起点，并参与起始日变更校验|
 |`investment_category`|投资类别|string（枚举）|—|产品投资类别分类标签；取值与中文含义（权益类、固收类等 12 项）见[产品投资类别](#productinvestmentcategory)|—|
-|`strategy_category`|策略类别|string（枚举）|—|产品策略类别；`index_enhanced` 会触发指标的指增特殊口径（见[净值与收益指标](../analytics.md#indicators-returns)），取值见[投资策略类别](#strategycategory)|—|
+|`strategy_category`|策略类别|string（枚举）|—|产品策略类别；`index_enhanced` 会触发指标的指增特殊口径（见[净值与收益指标](../analytics/metrics.md#indicators-returns)），取值见[投资策略类别](#strategycategory)|—|
 |<a id="productbenchmark"></a>`benchmark`|业绩比较基准|object|—|产品业绩比较基准，供指标比较与基准序列使用；基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)|—|
 |`benchmark.type`|基准种类|string（枚举）|—|基准种类：`index` 指数基准（配合指数代码，[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)可校验）、`customized_index` 自定义基准（配合自定义基准 ID）。枚举[基准类型](#productbenchmarktype)|—|
 |`benchmark.id`|基准标识|string|—|index 时为指数 order_book_id（行情由[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)取），customized_index 时为自定义基准 ID|与 benchmark.type 一致|

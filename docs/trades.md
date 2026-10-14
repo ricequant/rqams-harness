@@ -548,7 +548,7 @@ Python 签名：`rqamsh.trades.create_auto_balance_override(resource: str, data:
 
 操作检查：先用 `list` 核对目标证券在该除权除息日的自动权益结果，再提交修正；完成后重新查询或读取受影响日期的头寸报表确认结果，`effect_count` 不等于 1 时不要假定已生效。修正生效后，该笔自动权益流水在 `trades.list` 中会带 `auto_balance_edited` 为真与 `auto_balance_override_id`——删除这条修正时用的就是后者（见 [delete_auto_balance_override](#delete_auto_balance_override)）。
 
-写入或删除都会先删除受影响的自动权益流水再重算，重算落地前按该日期与标的查询可能短暂为空，要读取 `auto_balance_override_id` 时应先确认重算已落地。
+写入或删除都会先删除受影响的自动权益流水再重算，重算落地前按该日期与标的查询可能短暂为空，要读取 `auto_balance_override_id` 时应先确认重算已落地（计算状态回到 `normal`，见[未就绪与缺输入](connection.md#unready-inputs)），确认后重试同一 `trades.list` 读取；暂态为空不是该笔自动权益不存在。
 
 自动权益流水由计算引擎在除权除息日盘前、按该日盘前持仓（即除权日前一交易日的收盘持仓）生成：除权除息日当天才买入的产品不会产生这笔 `dividend_payment`。因此要修正某笔自动权益，必须在该除权除息日之前已持有标的。
 

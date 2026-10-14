@@ -59,7 +59,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 |导入托管估值表并对账|`products.get` 确认数据源及估值表覆盖配置 → `valuation_reports.list` 查同日记录 → 明确授权后 `valuation_reports.upload` → `products.compute_state` → `reconciliation.list/diff` 查缺件与差异 → `balances.get`|报告日期与实际替换范围正确，估值就绪；缺件与差异逐项说明，人工结论用 `reconciliation.mark` 记录|
 |查对账状态、标记或自动对账|`reconciliation.list` 查区间缺件与人工状态 → `reconciliation.diff` 或资产单元 `reconciliation.asset_unit_diff/positions_statement` 核对差异 → 授权后用 `reconciliation.mark` 记录结论，或用 `reconciliation.auto/undo_auto` 采用、撤销估值表覆盖 → `products.compute_state` → `balances.get` 读回|缺件与差异均有解释，读写结果一致；自动对账返回不代表计算完成|
 |查看历史资产、仓位或盘中变动|历史截面用 `balances.get(resource_or_resources=..., date=...)`；实时截面用 `balances.get(resource_or_resources=...)` 或北京时间当天 `date`；历史时序用 `balances.series`；少数顶层字段传 `fields`|交付包含目标、实际返回业务日期或估值时点、头寸与所需字段；当天/省略日期为实时语义，不能冒充日终历史结果。省略 `classifier` 返回平铺头寸，传非空分类器返回含 `children` 的分层头寸|
-|分析收益、回撤、风险或画曲线|确认产品/组、区间、基准与日历 → 汇总用 `analytics.indicators`，曲线用 `analytics.series`，胜率用 `analytics.win_rate`，产品多空拆解用 `analytics.long_short_returns`|按[指标计算口径](analytics.md#indicators-returns)区分金额、比例及年化，注明缺失数据；不能以这些结果声称完成未暴露的完整归因分析|
+|分析收益、回撤、风险或画曲线|确认产品/组、区间、基准与日历 → 汇总用 `analytics.indicators`，曲线用 `analytics.series`，胜率用 `analytics.win_rate`，产品多空拆解用 `analytics.long_short_returns`|按[指标计算口径](analytics/metrics.md#indicators-returns)区分金额、比例及年化，注明缺失数据；不能以这些结果声称完成未暴露的完整归因分析|
 |汇总多只产品|`product_groups.list/get` 核对现有组；授权后按需 `product_groups.create/update` 配置成员 → 用组读取 `balances.get/series` 和 `analytics.indicators/series`；实时成员权重视图使用 `balances.get(include_component_weight_view=True)`|成员、权重、日期和计算口径明确；成员权重视图仅实时产品组且需相应权限。成员数据修改仍逐产品执行|
 |给产品或产品组打标签|`tags.list` 查现有标签与绑定 → `tags.upsert` 写入名称、说明与绑定对象（整体覆盖）→ 不再需要时 `tags.delete` 按标签 ID 删除|标签与绑定只属于当前用户与[工作空间](connection.md#workspace)；删除只影响标签与绑定，不动产品与产品组|
 |给场外资产定价|`custom_instruments.list/get` 查标的及价格 → 必要时 `custom_instruments.create` 建档 → 按覆盖意图选择 `custom_instruments.upload_fairvalue` 或 `custom_instruments.replace_fairvalues` → `products.compute_state` → `balances.get`|代码、归属产品、币种和价格日期正确；确认是覆盖文件最早日起全部价格还是替换完整历史，并核对受影响日期估值|
@@ -80,7 +80,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 |列举或切换工作空间|`workspaces.list` 看当前身份可见的空间 → `workspaces.use` 按 ID 或名称切到目标空间|返回被选中的空间记录；切换后先复读目标空间内的资源再写入，切换只影响当前客户端|
 |出一期周报|`analytics.weekly_report` 给成员与报告截止日 → 需要工作簿时 `analytics.weekly_net_value_report` 指定新输出路径|窗口以返回的 `data.start_date`~`data.end_date` 为准，成员按策略分入 `market_neutral` 或 `index_enhanced`；缺本周或全区间指标的成员不占条目，两类都为空不等于收益为零|
 
-跨产品的差异口径整理仍需用已暴露查询取得相同日期和口径的数据后自行组织，并标明数据来源、差异与缺失项；对账状态、差异、人工标记与估值表自动对账已由[reconciliation](reconciliation.md)承载。净值与收益指标、持仓分析、业绩归因、交易分析、组合对比、周报、风控监控与市场数据已分别由 [analytics](analytics.md)、[risk_monitor](risk_monitor.md)、[market_data](market_data.md) 承载，资源分享与授权由 [permissions](permissions.md) 承载，工作空间的列举与切换由 [workspaces](workspaces.md) 承载。超出上列范围的模拟交易与平台运维需求，应明确说明不能通过当前 Harness 直接完成；需要判断具体能力是否可用时，先用 `rqamsh schema` 或本页导航核对操作清单，不要按 AMS 业务全貌推断。
+跨产品的差异口径整理仍需用已暴露查询取得相同日期和口径的数据后自行组织，并标明数据来源、差异与缺失项；对账状态、差异、人工标记与估值表自动对账已由[reconciliation](reconciliation.md)承载。净值与收益指标、持仓分析、业绩归因、交易分析、组合对比、周报、风控监控与市场数据已分别由 [analytics](analytics/index.md)、[risk_monitor](risk_monitor.md)、[market_data](market_data.md) 承载，资源分享与授权由 [permissions](permissions.md) 承载，工作空间的列举与切换由 [workspaces](workspaces.md) 承载。超出上列范围的模拟交易与平台运维需求，应明确说明不能通过当前 Harness 直接完成；需要判断具体能力是否可用时，先用 `rqamsh schema` 或本页导航核对操作清单，不要按 AMS 业务全貌推断。
 
 ## 19 个业务块导航
 
@@ -129,7 +129,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 |业务块|业务定位|支持目标与操作|
 |---|---|---|
 |[balances](balances.md)|单日头寸报表、历史与盘中时序|产品/组 `get/series/previous_summary/previous_summaries/export_file/export_snapshot`；字段最早日期 `field_earliest_date/field_earliest_dates`（仅产品）；`get` 支持单资源与批量，支持 date 统一历史与实时，成员权重视图仅实时产品组|
-|[analytics](analytics.md)|净值与收益指标、持仓分析、业绩归因、组合对比与交易分析|产品/组 `indicators/series/win_rate/download_series_file`（原 indicators 块，已并入）、`asset_weight`/各类 holdings/attribution 家族/`realtime_risk_attribution`/`realtime_factor_exposure`；`long_short_returns` 仅产品；组合对比 `group_indicators/group_returns/group_capital_size/group_allocation/group_returns_correlation/group_excess_correlation/group_overview_file`；周报 `weekly_report/weekly_net_value_report`；交易分析 `trading_analysis/single_trading_analysis/algo_trading_performance`|
+|[analytics](analytics/index.md)|净值与收益指标、持仓分析、业绩归因、组合对比与交易分析|四页：[净值与收益指标](analytics/metrics.md) 产品/组 `indicators/series/win_rate/download_series_file`，`long_short_returns` 仅产品；[持仓分析](analytics/holdings_analysis.md) `asset_weight`、各类 holdings、`holdings_summary_file`；[业绩归因](analytics/attribution.md) attribution 家族、`realtime_risk_attribution`、`realtime_factor_exposure`；[组合对比与交易分析](analytics/portfolio_analysis.md) `group_*`、`weekly_report/weekly_net_value_report`、`trading_analysis` 家族|
 
 ### 预警与市场数据
 
@@ -142,7 +142,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 
 ## 字段与计算口径
 
-承载业务功能的对象在 fields 目录保留字段说明；指标属于 API 计算结果，完整列表与公式直接放在[各操作返回说明](analytics.md#indicators-returns)，不另建指标对象字段页。[头寸字段字典](fields/balances.md)用一张五列表说明报表、摘要、持仓及分类份额；按完整英文字段路径查找，计算、筛选条件和原始输入来源都在该字段行，较长的资产分类枚举链接到文末清单。复算时沿[指标输入](analytics.md#indicator-inputs) → [资产负债汇总](fields/balances.md#balance-calculation) → [逐仓市值](fields/balances.md#position-calculation) → [价格及外部来源](fields/balances.md#position-inputs)追溯；托管现金变动见[净投入字段](fields/balances.md#balance-inputs)。不是所有指标都经过持仓；国债曲线、基准行情及申赎统计见[指标特殊来源](analytics.md#external-inputs)，各外部调用的官方页面见 [RQData 官方调用来源](rqdata.md)。
+承载业务功能的对象在 fields 目录保留字段说明；指标属于 API 计算结果，完整列表与公式直接放在[各操作返回说明](analytics/metrics.md#indicators-returns)，不另建指标对象字段页。[头寸字段字典](fields/balances.md)用一张五列表说明报表、摘要、持仓及分类份额；按完整英文字段路径查找，计算、筛选条件和原始输入来源都在该字段行，较长的资产分类枚举链接到文末清单。复算时沿[指标输入](analytics/metrics.md#indicator-inputs) → [资产负债汇总](fields/balances.md#balance-calculation) → [逐仓市值](fields/balances.md#position-calculation) → [价格及外部来源](fields/balances.md#position-inputs)追溯；托管现金变动见[净投入字段](fields/balances.md#balance-inputs)。不是所有指标都经过持仓；国债曲线、基准行情及申赎统计见[指标特殊来源](analytics/metrics.md#external-inputs)，各外部调用的官方页面见 [RQData 官方调用来源](rqdata.md)。
 
 - [产品、产品组及账户/基准/分类份额嵌套字段](fields/products.md)
 - [交易流水全部字段](fields/trades.md)
@@ -162,18 +162,18 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 
 |容易踩的地方|结论|权威页|
 |---|---|---|
-|收益窗口语义|`returns_summary.this_week`/`this_year` 是**向前滚动 1 周 / 1 年**（不是自然周 / 自然年度），`total` 才是区间累计；要自然窗口用 `balances.series` 的日收益复利|[指标公式](analytics.md#indicators-returns)|
+|收益窗口语义|`returns_summary.this_week`/`this_year` 是**向前滚动 1 周 / 1 年**（不是自然周 / 自然年度），`total` 才是区间累计；要自然窗口用 `balances.series` 的日收益复利|[指标公式](analytics/metrics.md#indicators-returns)|
 |实时 vs 历史|`date` 省略或等于北京时间当天 = 实时语义（可能未结算）；过去日期 = 历史；未来日期拒绝。当天结果不能冒充日终历史|[头寸报表](balances.md)|
 |分类节点的行业基准|`shenwan_level_*`/`zx_level_*` 节点上的 `benchmark_returns`/`excess_returns` 是**当前行情快照**，与请求 `date` 无关；历史行业超额走归因|[头寸字段](fields/balances.md)|
-|风格暴露的"历史"|实时截面用 `realtime_factor_exposure`；逐日历史暴露走归因 `result.attribution.factor_exposure`（异步任务）|[业绩归因](analytics.md#create_attribution)|
-|扩指标只返回值|`extra_indicators` 白名单内的指标返回**只有值**，没有公式文本/版本/参数；白名单外的名字被静默忽略，不报错|[指标公式](analytics.md#indicators-returns)|
+|风格暴露的"历史"|实时截面用 `realtime_factor_exposure`；逐日历史暴露走归因 `result.attribution.factor_exposure`（异步任务）|[业绩归因](analytics/attribution.md#create_attribution)|
+|扩指标只返回值|`extra_indicators` 白名单内的指标返回**只有值**，没有公式文本/版本/参数；白名单外的名字被静默忽略，不报错|[指标公式](analytics/metrics.md#indicators-returns)|
 |产品权限位|`products.list` 返回的 `permissions` 由服务端下发，客户端**不重算**；不要用本地权限推导判断可写性|[产品](products.md)|
 |工作空间列举与切换|列举走 AMS 用户接口 `/api/user/v1/workspaces`，未登录时返回 HTTP 200 与 `code` 非 0（不是 401）；切换只改请求头，同一会话即可换分区|[工作空间](workspaces.md)|
 |权限级别顺序|六个级别不是按名字排高低：`read_import_data`（三级）高于 `read_position`（二级）；路由要求的是下限，高级别可通过低级别要求的读取|[权限级别](permissions.md#权限级别)|
 |写入的必填与过滤|`products.create` 在所有数据源上运行期必填 `start_date`；`update` 没有字段白名单——提交未声明的键会直接报错，已声明的只读字段反而会被写入|[产品](products.md)|
 |导入流水的价格口径|`price` 填**不复权**实际成交价；持仓市值与净值按不复权行情算，用复权价导入会让买入金额与估值价格不同口径，凭空造出收益或亏损|[流水导入](trades.md#upload)|
 |名称与批量形态|`resource` 必须精确匹配 ID 或名称（不精确报「不存在或不可访问」，不做模糊匹配）；`balances.get` 的数组形态只接受 `fields`，`date`/`classifier`/`benchmark_id` 与非默认布尔参数传入即报 `invalid_argument`|[单字符串资源选择器](connection.md#单字符串资源选择器)|
-|周报窗口与分桶|`weekly_report` 的窗口是报告截止日所在自然周（周一非交易日顺延），起点随 `data.start_date` 下发；成员按策略分入 `market_neutral` 与 `index_enhanced`，策略为多重时全属中性类才进前者|[周报数据](analytics.md#周报数据)|
+|周报窗口与分桶|`weekly_report` 的窗口是报告截止日所在自然周（周一非交易日顺延），起点随 `data.start_date` 下发；成员按策略分入 `market_neutral` 与 `index_enhanced`，策略为多重时全属中性类才进前者|[周报数据](analytics/portfolio_analysis.md#周报数据)|
 |授权批量形态|`grant_many` 一次只服务同一类型（产品与产品组不混批），批量项不接受 `permission_id`；改既有授权行的级别要用 `grant` 带该行 `id`|[资源权限](permissions.md)|
 
 ## 必要边界
@@ -197,3 +197,6 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 - 分析、组合对比与导出通常耗时较久；等待超时不代表任务取消，先确认原请求结果。组合对比只提供一套组级口径，同一需求不要与单产品结果混用。
 - 自定义基准的创建与更新都是覆盖语义，删除不可回滚；风险条款写入后立即影响后续预警，3 级及以上必须提供 Webhook 地址。
 - 业绩解释需保留产品/组、区间、基准、日历和估值口径。仅凭一次公开返回不能重建全部历史行情、汇率、份额及权益事件；不能把所有收益都解释为成交价差。
+- 批量或长区间正式执行前，先用一个产品、一个接口做一次小样验证，确认参数与返回形态；参数与格式不确定时先读对应业务页，不要用失败重试试出参数。
+- 取数与聚合写成脚本文件再执行，不用内联单行命令（避开 shell 的转义与引号歧义）；产物落盘后复读内容、条数与日期，再交付。
+- 交付时先给已核验的核心结论，未核验或缺项的部分单列；用字段关系做一次守恒核对（净资产 = 资产 − 负债、单位净值 = 净资产 ÷ 份额，见[头寸字段](fields/balances.md#total-equity)）。
