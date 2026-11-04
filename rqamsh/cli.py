@@ -9,9 +9,11 @@ import sys
 import types
 import typing
 
-from .client import Client
+from .auth import login
+from .client import Client, DEFAULT_BASE_URL
 from .errors import HarnessError
 from .resources import RESOURCE_CLASSES
+from .settings import load_settings, settings_path
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -83,35 +85,35 @@ def schema():
     return result
 
 
-def _env_cookies():
-    """从 RQAMSH_COOKIE 读取初始 cookie 列表（多个以分号分隔）；空值返回 None。"""
-    raw = os.environ.get("RQAMSH_COOKIE")
-    items = [item for item in (raw or "").split(";") if item.strip()]
-    return items or None
-
-
-def _cookies(items):
-    """把 --cookie/RQAMSH_COOKIE 的 name=value 列表解析为 cookie 映射；非法项抛 HarnessError。"""
-    jar = {}
-    for item in items or []:
-        name, separator, value = item.partition("=")
-        if not separator or not name.strip():
-            raise HarnessError("invalid_config", f"cookie 必须形如 name=value：{item}")
-        jar[name.strip()] = value.strip()
-    return jar or None
+def _token(value):
+    """读取 --token/RQAMSH_TOKEN；以 @ 开头时从文件读取，去掉首尾空白。"""
+    if not value:
+        return None
+    if value.startswith("@"):
+        path = value[1:]
+        if not path:
+            raise HarnessError("invalid_config", "token 文件路径不能为空：@")
+        try:
+            return Path(path).read_text(encoding="utf-8-sig").strip()
+        except OSError as exc:
+            raise HarnessError("invalid_config", f"读取 token 文件失败：{path}（{exc}）") from exc
+    return value.strip()
 
 
 def _parser():
     """注册连接配置、离线发现及每个资源的公开业务方法。"""
     parser = JsonArgumentParser(prog="rqamsh", description="面向 Agent 的 AMS API；连接配置也可由 RQAMSH_* 环境变量提供")
-    parser.add_argument("--base-url", default=os.environ.get("RQAMSH_BASE_URL"), help="AMS 服务地址；也可用 RQAMSH_BASE_URL")
-    parser.add_argument("--workspace-id", default=os.environ.get("RQAMSH_WORKSPACE_ID"), help="工作空间 ID；默认使用可见空间中的第一个（workspaces list 查看、workspaces use 切换），也可用 RQAMSH_WORKSPACE_ID")
-    parser.add_argument("--cookie", action="append", default=_env_cookies(), metavar="NAME=VALUE", help="令牌（当前形态是会话 cookie）；可重复，也可用 RQAMSH_COOKIE（多个以分号分隔）")
+    parser.add_argument("--base-url", default=None, help="AMS 服务地址；默认线上 https://www.ricequant.com，私有化部署必须覆盖；也可用 RQAMSH_BASE_URL 或设置文件")
+    parser.add_argument("--workspace-id", default=None, help="成员工作空间 ID；省略时沿用设置文件中的最后空间，否则使用成员列表首项；也可用 RQAMSH_WORKSPACE_ID")
+    parser.add_argument("--token", default=None, metavar="TOKEN", help="Bearer 令牌；省略时使用设置文件或 RQAMSH_TOKEN，也可用 @文件 从文件读取；直接传字面值会进入 shell 历史和进程命令行，临时调试才用")
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--wait-timeout", type=float, default=300)
     parser.add_argument("--poll-interval", type=float, default=1)
-    blocks = parser.add_subparsers(dest="block", required=True)
+    blocks = parser.add_subparsers(dest="block")
     blocks.add_parser("schema", help="离线输出全部 API 签名、参数与说明")
+    auth = blocks.add_parser("auth", help="在浏览器中输入令牌并保存到本机设置；未指定空间时保存成员列表首项")
+    auth.add_argument("--auth-timeout", type=float, default=300, help="等待浏览器提交令牌的秒数")
+    auth.add_argument("--no-browser", action="store_true", help="不自动打开浏览器，只在 stderr 输出登录地址")
     for name, cls in RESOURCE_CLASSES.items():
         block = blocks.add_parser(name.replace("_", "-"), help=inspect.getdoc(cls))
         verbs = block.add_subparsers(dest="verb", required=True)
@@ -136,16 +138,73 @@ def _emit(value, stream):
     stream.write(json.dumps(value, ensure_ascii=False, allow_nan=False, default=str) + "\n")
 
 
+def _auto_login_enabled() -> bool:
+    """业务命令缺少登录时是否自动打开本机登录；可用 RQAMSH_AUTO_LOGIN=0 关闭。"""
+    value = os.environ.get("RQAMSH_AUTO_LOGIN")
+    return value is None or value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _has_saved_token() -> bool:
+    """安全检查设置文件是否已有令牌；损坏文件视为未登录，交给登录流程修复。"""
+    try:
+        return bool(load_settings(settings_path()).get("token"))
+    except HarnessError:
+        return False
+
+
+def _run_auth(namespace, *, emit: bool = True):
+    """运行浏览器登录；业务命令自动登录时不向 stdout 输出额外 JSON。"""
+    local_settings = settings_path()
+    try:
+        saved = load_settings(local_settings)
+    except HarnessError:
+        # 设置文件损坏时仍允许重新登录覆盖它，避免用户被坏文件锁死。
+        saved = {}
+    base_url = namespace.base_url or os.environ.get("RQAMSH_BASE_URL") or saved.get("base_url") or DEFAULT_BASE_URL
+
+    def open_browser(url):
+        """打开浏览器；无法自动打开时把地址留给用户。"""
+        if namespace.no_browser:
+            print(f"请在浏览器打开：{url}", file=sys.stderr)
+            return False
+        import webbrowser
+
+        opened = webbrowser.open(url)
+        if not opened:
+            print(f"无法自动打开浏览器，请访问：{url}", file=sys.stderr)
+        return opened
+
+    result = login(
+        base_url,
+        workspace_id=namespace.workspace_id or os.environ.get("RQAMSH_WORKSPACE_ID"),
+        settings_path=local_settings,
+        timeout=namespace.auth_timeout,
+        open_browser=open_browser,
+    )
+    if emit:
+        _emit({"status": "ok", "settings": result["settings"], "base_url": result["base_url"], "workspace_id": result["workspace_id"]}, sys.stdout)
+    return 0
+
+
 def main(argv=None):
     """运行命令并返回退出码；所有失败 JSON 写入 stderr。"""
     try:
         namespace = _parser().parse_args(argv)
+        if namespace.block is None:
+            namespace.no_browser = False
+            namespace.auth_timeout = 300
+            return _run_auth(namespace)
         if namespace.block == "schema":
             _emit(schema(), sys.stdout)
             return 0
-        if namespace.base_url is None:
-            raise HarnessError("invalid_config", "必须显式配置 base_url（参数或 RQAMSH_BASE_URL 环境变量）")
-        cookies = _cookies(namespace.cookie)
+        if namespace.block == "auth":
+            return _run_auth(namespace)
+        token = _token(namespace.token) if namespace.token is not None else _token(os.environ.get("RQAMSH_TOKEN"))
+        workspace = namespace.workspace_id or os.environ.get("RQAMSH_WORKSPACE_ID")
+        if token is None and not _has_saved_token() and _auto_login_enabled():
+            namespace.auth_timeout = 300
+            namespace.no_browser = False
+            _run_auth(namespace, emit=False)
         cls = RESOURCE_CLASSES[namespace._block]
         method = getattr(cls, namespace._method)
         hints = typing.get_type_hints(method)
@@ -156,7 +215,8 @@ def main(argv=None):
                 if name == "data" and namespace._method == "upload" and not value.lstrip().startswith(("@", "[", "{")):
                     value = "@" + value
                 arguments[name] = _convert(value, hints.get(name, parameter.annotation))
-        with Client(namespace.base_url, namespace.workspace_id, cookies=cookies, timeout=namespace.timeout, wait_timeout=namespace.wait_timeout, poll_interval=namespace.poll_interval) as client:
+        base_url = namespace.base_url or os.environ.get("RQAMSH_BASE_URL")
+        with Client(base_url, workspace, token=token, settings_path=settings_path(), timeout=namespace.timeout, wait_timeout=namespace.wait_timeout, poll_interval=namespace.poll_interval) as client:
             result = getattr(getattr(client, namespace._block), namespace._method)(**arguments)
         _emit(result, sys.stdout)
         return 0

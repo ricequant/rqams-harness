@@ -177,11 +177,19 @@ def service():
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    with Client(f"http://127.0.0.1:{server.server_port}", "012345678901234567890123", cookies={"sid": "test"}, poll_interval=0.001) as client:
+    with Client(f"http://127.0.0.1:{server.server_port}", "012345678901234567890123", token="test", poll_interval=0.001) as client:
         yield client, state
     server.shutdown()
     server.server_close()
     thread.join()
+
+
+def test_default_base_url_is_online(tmp_path):
+    """省略地址时使用线上默认值；私有化部署仍需显式覆盖。"""
+    with Client(token="test", settings_path=tmp_path / "missing.json") as client:
+        assert client.base_url == "https://www.ricequant.com/api/rqams/v2"
+    with Client("https://private.example.com/", token="test") as client:
+        assert client.base_url == "https://private.example.com/api/rqams/v2"
 
 
 def test_task_poll_never_repeats_write(service):
@@ -224,8 +232,13 @@ def test_name_ambiguity_is_not_silently_resolved(monkeypatch):
     """跨产品与产品组同名必须返回全部候选。"""
     from rqamsh.client import ResourceRef
 
-    with Client("http://localhost:21015", "012345678901234567890123", cookies={"sid": "test"}) as client:
-        monkeypatch.setattr(client, "resource_catalog", lambda: [ResourceRef("product", "p1", "同名"), ResourceRef("product_group", "g1", "同名")])
+    with Client("http://localhost:21015", "012345678901234567890123", token="test") as client:
+        refs = [ResourceRef("product", "p1", "同名"), ResourceRef("product_group", "g1", "同名")]
+        client._resource_detail_cache = {
+            ("product", None, "p1"): {"id": "p1", "name": "同名"},
+            ("product_group", None, "g1"): {"id": "g1", "name": "同名"},
+        }
+        monkeypatch.setattr(client, "_catalog_index_snapshot", lambda: (refs, False))
         with pytest.raises(HarnessError) as error:
             client.resolve("同名", {"product", "product_group"})
         assert error.value.code == "ambiguous_resource"
@@ -347,7 +360,7 @@ def test_slow_stream_cannot_bypass_total_deadline():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with Client(f"http://127.0.0.1:{server.server_port}", "012345678901234567890123", cookies={"sid": "test"}, wait_timeout=0.2) as client:
+        with Client(f"http://127.0.0.1:{server.server_port}", "012345678901234567890123", token="test", wait_timeout=0.2) as client:
             started = time.monotonic()
             with pytest.raises(HarnessError) as error:
                 client.call("GET", "slow")
@@ -467,6 +480,18 @@ def test_external_or_parent_paths_never_send_a_request(service, path):
     assert state["requests"] == []
 
 
+def test_single_resolve_reads_only_matched_detail(service):
+    """单资源解析只拉命中项的详情：其余产品不进入请求，避免上百条逐项详情。"""
+    client, state = service
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "目标"}, {"id": "p2", "name": "其他"}, {"id": "p3", "name": "另一个"}])
+    assert client.resolve("目标", {"product"}).id == "p1"
+    paths = [request[1] for request in state["requests"] if request[0] == "GET"]
+    assert paths.count("/api/rqams/v2/products/p1") == 1
+    assert paths.count("/api/rqams/v2/products/p2") == 0
+    assert paths.count("/api/rqams/v2/products/p3") == 0
+    assert collection_hits(state) == dict.fromkeys(_CATALOG_COLLECTIONS, 1)
+
+
 def test_catalog_is_reused_within_one_client(service):
     """同一客户端在缓存窗口内复用同一份目录：多次解析只列举一次，条目与顺序不变。"""
     client, state = service
@@ -549,6 +574,57 @@ def test_catalog_expires_after_ttl(service, monkeypatch):
     clock["offset"] += 2
     assert client.resolve("p1", {"product"}).id == "p1"
     assert collection_hits(state) == dict.fromkeys(_CATALOG_COLLECTIONS, 2)
+
+
+@pytest.mark.parametrize("full_catalog", [False, True])
+def test_expired_details_are_revalidated_before_exposing_resources(service, monkeypatch, full_catalog):
+    """外部撤销详情读取权限后，过期目录不能继续暴露旧详情。"""
+    client, state = service
+    real_monotonic = client_module.monotonic
+    clock = {"offset": 0.0}
+    monkeypatch.setattr(client_module, "monotonic", lambda: real_monotonic() + clock["offset"])
+    product = {"id": "p1", "name": "产品"}
+    state["catalog"] = catalog_routes([product])
+    if full_catalog:
+        assert [ref.id for ref in client.resource_catalog()] == ["p1"]
+    else:
+        assert client.resolve("p1", {"product"}).name == "产品"
+    state["catalog"] = catalog_routes([product], denied=["p1"])
+    clock["offset"] += client_module._CATALOG_TTL_SECONDS + 1
+    if full_catalog:
+        assert client.resource_catalog() == []
+    else:
+        with pytest.raises(HarnessError) as error:
+            client.resolve("p1", {"product"})
+        assert error.value.code == "resource_not_found"
+
+
+def test_expired_period_configuration_changes_realtime_balance_route(service, monkeypatch):
+    """周期配置在外部变更后，TTL 到期应恢复夜盘实时路由而非沿用日盘摘要。"""
+    client, state = service
+    real_monotonic = client_module.monotonic
+    clock = {"offset": 0.0}
+    monkeypatch.setattr(client_module, "monotonic", lambda: real_monotonic() + clock["offset"])
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "产品", "realtime_period_type": "daytime"}])
+    state["responses"] = [(200, {"total_equity": 80})]
+    assert client.balances.get("p1", fields=["total_equity"]) == {"total_equity": 80}
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "产品", "realtime_period_type": "valuation_day"}])
+    clock["offset"] += client_module._CATALOG_TTL_SECONDS + 1
+    state["responses"] = [(200, {"total_equity": 120})]
+    assert client.balances.get("p1", fields=["total_equity"]) == {"total_equity": 120}
+    assert state["requests"][-1][1].split("?")[0].endswith("/asset_snapshot_summary")
+
+
+def test_index_refresh_revalidates_previously_read_details(service):
+    """新资源触发强制重建时，也应刷新既有资源详情，不能给旧配置续期。"""
+    client, state = service
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "旧名"}])
+    assert client.resolve("p1", {"product"}).name == "旧名"
+    state["catalog"] = catalog_routes([
+        {"id": "p1", "name": "新名"}, {"id": "p2", "name": "新增"},
+    ])
+    assert client.resolve("p2", {"product"}).name == "新增"
+    assert client.resolve("p1", {"product"}).name == "新名"
 
 
 def test_catalog_miss_rebuilds_once_before_reporting_missing(service):

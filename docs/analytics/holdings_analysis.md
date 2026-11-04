@@ -6,7 +6,7 @@
 
 ## asset_weight
 
-读取产品或产品组的资产权重视图；[行业分类](https://www.ricequant.com/doc/rqdata/python/stock-mod#rqdata-API-get-instrument-industry-stockmod)缓存构建期服务端会要求稍后重试。
+读取产品或产品组的资产权重视图；这是任务型操作，首发 202 后由客户端轮询到终态，权重结果在 `data` 内（等待与结局见[等待任务与判断完成](../connection.md#等待任务与判断完成)）。
 - asset_weight：按区间与分类数组返回权重分布；分类数组为空或只有空白会被拒绝，避免退化成全量或空筛选。
 
 Python 签名：`rqamsh.analytics.asset_weight(resource: str, *, start_date: str, end_date: str, classifiers: str | list[str])`。
@@ -18,25 +18,36 @@ Python 签名：`rqamsh.analytics.asset_weight(resource: str, *, start_date: str
 |`end_date`|`str`|必填|YYYY-MM-DD。|
 |`classifiers`|`str \| list[str]`|必填|非空分类或分类数组，数组按下发顺序序列化为逗号串；取值只能是 `asset_class`（资产属性）、`trading_asset_class`（[交易属性](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)）、`shenwan_level_1`/`shenwan_level_2`/`shenwan_level_3`、`zx_level_1`/`zx_level_2`，其他值会被服务端拒绝。|
 
-返回：服务端权重视图，含 `classifier_weight` 与 `trading_asset_class_weight_series` 两部分。若行业分类缓存正在构建，服务端会以「正在初始化」提示并要求稍后重试（带重试间隔），需由调用方识别该提示后稍后重试同一读取：这里是普通 200 业务响应，客户端不会自动重试，也不会取出该响应里的间隔去等待（重试间隔只在任务状态轮询时使用）；此时不会有数值返回，不要把它当成空权重。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，权重视图在 `data` 内。`data` 恒含 `classifier_weight`（`end_date` 当日截面）与 `trading_asset_class_weight_series`（区间逐日）两部分；键集合固定，数值随持仓与分类取值变化。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|（根对象）|权重视图对象|object|—|服务端直接返回的权重视图，恒含 `classifier_weight` 与 `trading_asset_class_weight_series` 两部分|恒返回；行业分类缓存构建中时不返回数值，服务端以「正在初始化」提示要求稍后重试|
-|`classifier_weight`|按分类的权重|array（object）|—|每个请求分类一项，元素含 `classifier` 与 `weight`|由参数选择；只对请求中给出的分类返回条目，不会扩展成全量分类|
-|`classifier_weight[].classifier`|分类名|string|—|该项对应的分类取值|随父级记录返回|
-|`classifier_weight[].weight`|该分类下的分组权重行|array（object）|—|元素含 `name`、`quantity`、`quantity_pct`、`market_value`、`weight`、`children`|随父级记录返回；无持仓或该分类无可用取值时为空数组|
-|`classifier_weight[].weight[].name`|分组名|string|—|该分类取值下的分组名；`classifiers` 含 `trading_asset_class` 时是[交易资产属性](../fields/others.md#tradingassetclass) 的英文值|随父级记录返回|
-|`classifier_weight[].weight[].quantity`|持仓数量合计|number|—|该分组持仓数量合计|随父级记录返回|
-|`classifier_weight[].weight[].quantity_pct`|数量占比|number|小数|该分组数量占同一分类合计数量的比例|随父级记录返回|
-|`classifier_weight[].weight[].market_value`|持仓市值合计|number|估值币种金额|该分组持仓市值合计|随父级记录返回|
-|`classifier_weight[].weight[].weight`|市值权重|number|小数|该分组市值占同一报告市值合计的比例|随父级记录返回|
-|`classifier_weight[].weight[].children`|分组内逐券明细|array（object）|—|元素含 `order_book_id`、`symbol`、`quantity`、`market_value`、`weight`|随父级记录返回；无明细时为空数组|
-|`trading_asset_class_weight_series`|交易属性权重时序|object|—|恒含 `series_names` 与 `series` 两部分|恒返回|
-|`trading_asset_class_weight_series.series_names`|序列中出现的交易属性名|array（string）|—|序列中出现过的[交易资产属性](../fields/others.md#tradingassetclass) 英文值|恒返回；无数据时为 `[]`|
-|`trading_asset_class_weight_series.series`|逐日权重记录|array（object）|—|每个产品日历日一条，元素含 `date` 与各交易属性名键，值为该属性当日市值合计/同日净资产|恒返回；无数据时为 `[]`；不是“日期 → 值”映射|
-|`trading_asset_class_weight_series.series[].date`|业务日期|string|—|该条记录对应的产品日历日|随父级记录返回|
-|`trading_asset_class_weight_series.series[].{交易属性名}`|该交易属性当日权重|number|小数|该交易属性当日市值合计 / 同日净资产；键名是[交易资产属性](../fields/others.md#tradingassetclass) 的英文值|由数据决定；只对该日有持仓的属性出现，键名以 `series_names` 为准|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`status`|任务状态|string（枚举）|—|本次任务的执行状态，取值与终态判断见[任务终态 JSON](../connection.md#task-result)|轮询响应恒返回|
+|`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`data`|权重视图|object|—|含 `classifier_weight` 与 `trading_asset_class_weight_series` 两部分|`status` 为 `SUCCESS` 时返回；两项恒同时出现|
+|`data.classifier_weight`|按分类的权重|array（object）|—|每个请求分类一项，元素含 `classifier` 与 `weight`|由参数选择；只对请求中给出的分类返回条目，不会扩展成全量分类|
+|`data.classifier_weight[].classifier`|分类名|string|—|该项对应的分类取值|随父级记录返回|
+|`data.classifier_weight[].weight`|该分类下的分组权重行|array（object）|—|元素含 `name`、`quantity`、`quantity_pct`、`market_value`、`weight`、`children`|随父级记录返回；无持仓或该分类无可用取值时为空数组|
+|`data.classifier_weight[].weight[].name`|分组名|string|—|该分类取值下的分组名；`classifiers` 含 `trading_asset_class` 时是[交易资产属性](../fields/others.md#tradingassetclass) 的英文值|随父级记录返回|
+|`data.classifier_weight[].weight[].quantity`|持仓数量合计|number|—|该分组持仓数量合计|随父级记录返回|
+|`data.classifier_weight[].weight[].quantity_pct`|数量占比|number|小数|该分组数量占同一分类合计数量的比例|随父级记录返回|
+|`data.classifier_weight[].weight[].market_value`|持仓市值合计|number|估值币种金额|该分组持仓市值合计|随父级记录返回|
+|`data.classifier_weight[].weight[].weight`|市值权重|number|小数|该分组市值占同一报告市值合计的比例|随父级记录返回|
+|`data.classifier_weight[].weight[].children`|分组内明细|array（object）|—|按代码与名称归并后的明细，字段见下列各行|随父级记录返回；可包含三级估值科目汇总，不保证是逐证券明细，无明细时为空数组|
+|`data.classifier_weight[].weight[].children[].order_book_id`|代码|string|—|标的代码或估值表汇总行标识|随父级记录返回；汇总行标识不能用于逐券查询|
+|`data.classifier_weight[].weight[].children[].symbol`|名称|string|—|标的或估值表汇总科目名称|随父级记录返回|
+|`data.classifier_weight[].weight[].children[].quantity`|数量合计|number|—|同一代码与名称的数量合计|随父级记录返回；汇总科目不按证券数量解读|
+|`data.classifier_weight[].weight[].children[].market_value`|市值合计|number|估值币种金额|该明细的市值合计|随父级记录返回|
+|`data.classifier_weight[].weight[].children[].weight`|市值权重|number|小数|该明细市值占同一报告市值合计的比例|随父级记录返回|
+|`data.trading_asset_class_weight_series`|交易属性权重时序|object|—|恒含 `series_names` 与 `series` 两部分|恒返回|
+|`data.trading_asset_class_weight_series.series_names`|序列中出现的交易属性名|array（string）|—|序列中出现过的[交易资产属性](../fields/others.md#tradingassetclass) 英文值|恒返回；无数据时为 `[]`|
+|`data.trading_asset_class_weight_series.series`|逐日权重记录|array（object）|—|每个产品日历日一条，元素含 `date` 与各交易属性名键，值为该属性当日市值合计/同日净资产|恒返回；无数据时为 `[]`；不是“日期 → 值”映射|
+|`data.trading_asset_class_weight_series.series[].date`|业务日期|string|—|该条记录对应的产品日历日|随父级记录返回|
+|`data.trading_asset_class_weight_series.series[].{交易属性名}`|该交易属性当日权重|number|小数|该交易属性当日市值合计 / 同日净资产；键名是[交易资产属性](../fields/others.md#tradingassetclass) 的英文值|由数据决定；只对该日有持仓的属性出现，键名以 `series_names` 为准|
+|`message`|任务提示|string / null|—|服务端说明文案|由数据决定；运行中或失败时出现，成功终态可能没有该键|
+
+任务由服务端异步计算：已结算日缺少估值结果时任务会提交补算并重试，[行业分类](https://www.ricequant.com/doc/rqdata/python/stock-mod#rqdata-API-get-instrument-industry-stockmod)缓存正在构建时同样自行等待重试，客户端持续轮询同一任务直到终态。未结算日期须区分两条取数路径：`asset_class`、`trading_asset_class` 的期末分类和逐日交易属性序列读取日余额，不读取实时截面，因此即使实时已就绪，分类下的 `weight` 仍可能为空或序列缺少该日；须等对应日余额可用后再核对，不能靠反复等实时截面补齐。行业分类的当日截面才使用实时结果，尚未产出时相应部分可为空。两条路径均不改用上一结算日，也不把缺失写成 `0`；空结果不等于「当日无持仓」，诊断见[未就绪与缺输入](../connection.md#unready-inputs)。等待到 `wait_timeout` 只表示停止等待，不代表任务失败或权重为 `0`；任务最终失败时保留 `task_id` 与 `message`，按失败原因处理输入后重读。
 
 ## equity_holdings
 
@@ -54,11 +65,11 @@ Python 签名：`rqamsh.analytics.equity_holdings(resource: str, *, start_date: 
 |`split_long_short`|`bool`|`False`|是否拆分多空。|
 |`include_component_weight_view`|`bool`|`False`|成员权重视图；仅产品组可用。|
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，分析结果在 `data` 内。表中的 `{指数名}` 是动态键（代入指数名，服务端按固定顺序给出），`[][序号]` 表示定长位置数组的第几个位置，二者都不是实际 JSON 键。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，分析结果在 `data` 内。表中的 `{指数名}` 是动态键（代入指数名，服务端按固定顺序给出），`[][序号]` 表示定长位置数组的第几个位置，二者都不是实际 JSON 键。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|股票持仓分析结果|object|—|本次股票持仓分析的结果对象，含下列键|`status` 为 `SUCCESS` 时返回；未拆分多空时为本表下列键，`split_long_short=True` 时改出本表末尾的 `long_*`／`short_*` 键|
@@ -168,11 +179,11 @@ Python 签名：`rqamsh.analytics.convertible_holdings(resource: str, *, start_d
 |`start_date`|`str`|必填|YYYY-MM-DD。|
 |`end_date`|`str`|必填|YYYY-MM-DD。|
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，分析结果在 `data` 内。表中的 `{指数名}` 是动态键（代入指数名，服务端按固定顺序给出 12 个指数），`[][序号]` 表示定长位置数组的第几个位置，二者都不是实际 JSON 键。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，分析结果在 `data` 内。表中的 `{指数名}` 是动态键（代入指数名，服务端按固定顺序给出 12 个指数），`[][序号]` 表示定长位置数组的第几个位置，二者都不是实际 JSON 键。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|可转债持仓分析结果|object|—|含下列五个键；行业、板块与市值档位均按正股归类，市值按转债持仓市值统计|`status` 为 `SUCCESS` 时返回；区间内无转债持仓或相应数据不可得时对应键为空数组 `[]`|
@@ -219,11 +230,11 @@ Python 签名：`rqamsh.analytics.convertible_positions(resource: str, *, start_
 |`start_date`|`str`|必填|YYYY-MM-DD。|
 |`end_date`|`str`|必填|YYYY-MM-DD。|
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，分析结果在 `data` 内。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，分析结果在 `data` 内。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|可转债持仓明细结果|object|—|含 `date`（服务端实际采用的截止日）与 `positions`（逐券明细数组）两个键|`status` 为 `SUCCESS` 时返回；无转债持仓时 `positions` 为 `[]`|
@@ -266,11 +277,11 @@ Python 签名：`rqamsh.analytics.futures_holdings(resource: str, *, start_date:
 |`average_total_turnover`|`int`|`2`|平均总成交额口径参数，服务端按「十亿」量级换算；Harness 不换算单位。|
 |`total_turnover_ranking`|`int`|`3`|成交额排名口径参数。|
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，分析结果在 `data` 内。表中的 `{品种代码}` 是动态键（服务端固定给出 `IF`、`IC`、`IM`），不是实际 JSON 键。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，分析结果在 `data` 内。表中的 `{品种代码}` 是动态键（服务端固定给出 `IF`、`IC`、`IM`），不是实际 JSON 键。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|期货持仓分析结果|object|—|含下列键|`status` 为 `SUCCESS` 时返回；无数据的键为空数组或空对象|
@@ -341,11 +352,11 @@ Python 签名：`rqamsh.analytics.option_holdings(resource: str, *, start_date: 
 |`start_date`|`str`|必填|YYYY-MM-DD。|
 |`end_date`|`str`|必填|YYYY-MM-DD。|
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，分析结果在 `data` 内。
+返回：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，分析结果在 `data` 内。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|期权持仓分析结果|object|—|含 `greeks`、`series_greeks`、`underlying_series_greeks` 三个键，三键恒同时出现|`status` 为 `SUCCESS` 时返回；无期权持仓或希腊字母不可得时三键分别为 `{}`、`[]`、`[]`，键本身仍存在|

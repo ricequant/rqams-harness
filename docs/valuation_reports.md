@@ -12,7 +12,7 @@
 
 ## 估值表输入的两种形态
 
-同一业务日的产品截面有两条写入路径，字段形状相同（`date`、`total_equity`、`units`、`unit_net_value`、`positions`），差别在路由、记录键、覆盖规则、对估值生效的条件与能表达的字段：
+同一业务日的产品截面有两条写入路径，字段形状相同（`date`、`total_equity`、`units`、`unit_net_value`、`positions`），差别在写入方式、记录键、覆盖规则、对估值生效的条件与能表达的字段：
 
 |形态|写入方法|记录键|凭证来源|覆盖规则|对估值生效的条件|
 |---|---|---|---|---|---|
@@ -31,22 +31,16 @@
 
 字段逐项见[估值报告字段](fields/valuation_reports.md)。
 
-## 从用户需求到操作
+## 相关学习案例
 
-|用户需求|操作顺序|完成条件|
-|---|---|---|
-|核对某日是否有托管报告|`list` 明确日期范围；需要原始内容时取 valuation_report_id 调 `download`|元数据日期、source 和原文件一致；列表本身不包含完整报告持仓|
-|建立或补充估值报告输入|核对产品数据源 → 准备一份 JSON 或受支持文件 → `upload` → `list`|检查 err_msg、返回日期和记录 ID，并确认报告存在；有效报告仍可能附有解析错误|
-|替换已导入的错误报告|先 list/download 留存 → 核对文件实际日期 → 用 replace_dates 精确允许覆盖后 upload|目标日期报告已更新，其他日期不受白名单本身影响；再核对产品头寸报表|
-|删除误导入报告|确认授权及日期 → `delete(dates=...)` → `list`|目标报告已移除，相关自动估值表覆盖影响已核对，且该日 `done` 已复位为未完成对账；删除参数不是报告 ID|
-|定位需要补导的日期|`missing_dates` 取缺失交易日 → 与应覆盖区间核对 → 逐日 `upload` → 再次 `missing_dates` 复核|返回日期均已补导或被明确排除，且未把缺失日期当作零净值|
+[估值表导入与结果核对](demo/valuation-report-reconciliation/README.md)展示材料识别、同日替换授权、保存与采用的区别，以及结果复查。
 
 导入保存与采用估值表覆盖是两个完成条件。适用数据源、自动覆盖设置与初始化例外见[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)；覆盖的影响、核对流程与自动对账见[对账](reconciliation.md#valuation-report-overwrite)。
 
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接与公共错误处理见[连接说明](connection.md)。替换示例产品、ID 与路径，写入、覆盖和删除须获得授权。网关上读取与下载要求 `read_import_data`，导入/删除要求目标产品 `write`（客户端不预判权限）；JSON 和文件按本页字段与覆盖规则准备。
+Python 与 CLI 完成相同业务操作，连接与公共错误处理见[连接说明](connection.md)。替换示例产品、ID 与路径，写入、覆盖和删除须获得授权。读取与下载要求 `read_import_data`，导入/删除要求目标产品 `write`（客户端不预判权限）；JSON 和文件按本页字段与覆盖规则准备。
 
 ## list
 列出产品已导入估值报告元数据。
@@ -63,13 +57,14 @@ Python 签名：`rqamsh.valuation_reports.list(resource: str, *, start_date: str
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|报告元数据|object|—|一份已导入估值报告的元数据|恒返回；服务端固定只返回下列四个键，没有 `_id`|
+|`[]`|报告元数据|object|—|一份已导入估值报告的元数据|恒返回；服务端固定只返回下列五个键，没有 `_id`|
 |`[].date`|业务日期|string|YYYY-MM-DD|该报告的业务日期，不等同写入时间|恒返回；字段明细见[估值报告文件信息](fields/valuation_reports.md#valuationreportmetadata)|
 |`[].file_name`|原上传文件名|string|—|该报告保存的源文件名|恒返回|
 |`[].valuation_report_id`|估值报告业务记录 ID|string|字符串 ID|下载与比对这份报告时使用的 ID|恒返回|
 |`[].source`|来源|string（枚举）|—|该报告的来源；取值见[估值报告来源](fields/valuation_reports.md#valuationreportsource)|恒返回|
+|`[].valuation_level`|估值表级别|integer|`3` 或 `4`|该报告按三级还是四级估值表解析|恒返回；`3` 表示三级（无逐证券明细），字段含义见[估值报告文件信息](fields/valuation_reports.md#valuationreportmetadata)|
 
-结果检查：按 date 核对目标区间与缺失日期，保存 valuation_report_id 供下载使用。列表仅有元数据，不能据此断定报告净值或持仓正确；省略日期可能不覆盖用户要查的历史区间。
+结果检查：按 date 核对目标区间与缺失日期，保存 valuation_report_id 供下载使用。列表仅有元数据，不能据此断定报告净值或持仓正确；省略日期可能不覆盖用户要查的历史区间。`valuation_level=3` 只说明该报告按三级估值表解析，读到历史三级报告不代表当前可以用 `upload` 显式声明三级。
 
 ```python
 result = rqamsh.valuation_reports.list(resource='授权测试产品')
@@ -81,7 +76,7 @@ rqamsh valuation-reports list --resource "授权测试产品"
 
 ## upload
 上传一个结构化估值报告或一个估值文件，二者互斥。
-[顶层、嵌套positions、分类份额、元数据字段](fields/valuation_reports.md)。结构化 data 是**一份报告对象**，不要添加外层 valuation_report 包装。file_path 是一份 CSV/Excel 文件，二者必须且只能提供一个。结构化输入必填 date、total_equity、units、unit_net_value、positions；非类现金持仓须 quantity、cost_price；期货还须 sterilisation_market_value。结构化报告会生成 CSV 作为源文件保存，所以 download 也适用于结构化导入。
+[顶层、嵌套positions、分类份额、元数据字段](fields/valuation_reports.md)。结构化 data 是**一份报告对象**，不要添加外层 valuation_report 包装。file_path 是一份 `.xls`/`.xlsx` 估值文件，原始 CSV 不支持文件上传，需要 CSV 形态时改用结构化 JSON；data 与 file_path 必须且只能提供一个。结构化输入必填 date、total_equity、units、unit_net_value、positions；每条持仓必含 order_book_id、symbol、asset_class、direction、market_value。非类现金且非虚拟汇总的持仓还须出现 quantity 与 cost_price 两个键（值可以为空）；类现金持仓和三级虚拟汇总持仓不触发这两项校验，分类见[类现金、非类现金与 `cash` 指标](fields/others.md#deposit-like-classification)。期货类持仓还须提供 sterilisation_market_value。结构化报告会生成 CSV 作为源文件保存，所以 download 也适用于结构化导入。
 
 ```json
 {"date":"2026-01-05","total_equity":1000000.0,"units":1000000.0,"unit_net_value":1.0,"acc_unit_net_value":1.0,"positions":[{"order_book_id":"CNY","symbol":"活期存款","asset_class":"current_deposit","direction":"long","market_value":1000000.0}]}
@@ -90,6 +85,23 @@ rqamsh valuation-reports list --resource "授权测试产品"
 
 source 默认open_api，允许manual/open_api/client_upload，取值见[估值报告来源](fields/valuation_reports.md#valuationreportsource)。日期不能晚于到期日；封账和静态会计保护仍适用。是否写入估值表覆盖输入并触发重算，按[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)判断。
 文件应采用所属托管/估值机构受支持的模板，不能上传任意 Excel 并假定可解析。若无法确认模板兼容性，可按字段契约准备结构化报告；无论采用哪种方式，都须核对返回日期、净资产和持仓是否符合原始业务数据。
+
+### 估值表级别与三级文件解析
+
+估值表级别描述文件的科目层级：`4` 为带逐证券明细的四级估值表，`3` 为科目只列到第三层、没有逐证券明细的三级估值表。服务端文件入口接受 `3` 或 `4` 的级别声明，未声明时按 `4` 解析；`rqamsh.valuation_reports.upload` 没有级别参数，经本客户端上传的文件固定按缺省的四级解析，改名或改扩展名都不会改变级别。结构化导入的级别取报告数据中的三级标记，未标记时记录为四级。需要显式三级解析时只能由服务端文件入口声明，本客户端尚未暴露该参数。
+
+按三级声明解析时先过下面三道门禁，任一不满足即整文件以解析错误拒绝，不保存该文件的解析结果：
+
+- 科目层级只到第三层：文件出现第四层明细时整文件拒绝；即使另一套表头更宽松的模板只读到汇总行，也不能据此判定三级解析成功。
+- 科目编码的层级分隔符必须与命中模板一致：点号分层编码与无分隔的连续编码各由对应模板承接，分隔符不匹配时该模板不适用；两套模板都不适用即整文件拒绝。
+- 三级汇总必须勾稽：总资产、总负债、净资产三项同时存在时，`total_assets − total_liabilities − total_equity` 必须为有限值且绝对值不超过 `1`；不因这条校验把缺失总额补为 `0`。净资产、份额和单位净值同时可比较且份额非零时，`total_equity ÷ units` 与 `unit_net_value` 的偏差必须为有限值且绝对值不超过 `0.0001`，否则整文件拒绝。
+
+门禁通过后，三级报告按下面的口径汇总；这些是汇总结果的口径，不是额外的拒绝条件：
+
+- 父子汇总不双计：同一科目的父项与直接子项金额勾稽时向下取更细一层，不勾稽时保留父项并排除其全部后代，父项与后代不会同时计入。
+- 需要证券明细的品种只留汇总额：股票、基金、债券、期权等不产生逐证券持仓；活期存款、结算备付金、存出保证金、证券清算款与其他应付款仍按可识别的具体会计科目保留，便于与现金、应付款逐项对账。
+- 产品费用单独保留：管理费、托管费、销售服务费、运营费、业绩报酬各按对应的费用应付科目保留，不并入其他应付款。
+- 上海、深圳股票市值与总资产、总负债直接取表内汇总行，不按汇总持仓重算；三级持仓本身是汇总额，逐券口径不适用。
 
 有效报告也可能伴随解析错误；部分失败异常保留完整结果，不保证已保存内容回滚。
 
@@ -116,7 +128,7 @@ Python 签名：`rqamsh.valuation_reports.upload(resource: str, data: dict[str, 
 |`date`|业务日期|string|YYYY-MM-DD|本次实际写入的报告日期|恒返回；以服务端按报告内容解析出的日期为准|
 |`is_modified`|是否覆盖已有报告|boolean|—|本次是否修改了同日已有报告|恒返回；新建同日报告时为 false，与 `effect_count` 一起解读|
 
-操作检查：上传前查同日报告并明确是否允许替换；replace_dates 比全局 is_overwrite 更适合限定授权日期。返回或部分失败后先检查 err_msg、date、valuation_report_id，并 list/download 核对已保存内容，再决定是否重试；估值更新还需检查 auto_overwrite 和头寸报表。
+操作检查：上传前查同日报告并明确是否允许替换；replace_dates 比全局 is_overwrite 更适合限定授权日期。返回或部分失败后先检查 err_msg、date、valuation_report_id，并 list/download 核对已保存内容，再决定是否重试；估值更新还需检查 auto_overwrite 和头寸报表。返回本身不含估值表级别，需要确认级别时用 `list` 的 `valuation_level` 核对。
 
 ```python
 import json
@@ -181,7 +193,16 @@ Python 签名：`rqamsh.valuation_reports.download(resource: str, valuation_repo
 |`valuation_report_id`|`str`|必填|list 返回的估值报告 ID。|
 |`output`|`str`|必填|必填本地输出文件路径。|
 
-`valuation_report_id` 必须来自目标产品的报告列表；不匹配会返回 `resource_not_found`。确认产品和报告归属后再重试，不能仅更换产品名称来尝试读取其他产品的报告。
+`valuation_report_id` 必须取自目标产品 `list` 返回的报告记录，不要用其他产品的 ID 或猜测的 ID 尝试读取。归属与存在性以目标产品 list 为准，一次成功下载不能反过来证明报告归属于该产品。取不到时报什么由服务端按该记录的实际状态返回，客户端不预判固定错误码，按错误详情中的 HTTP 状态与文案处理。
+
+原始文件本身还可能不可用。以下两种状态是原件层面的失败，返回通用 `http_error`，用 HTTP 状态区分，客户端不为它们新造错误码：
+
+|HTTP 状态|服务端文案|含义与恢复|
+|---|---|---|
+|`404`|原始估值表文件不存在，请重新上传原文件|该报告的原始文件已不在存储中；重新上传该日原件后才能恢复下载|
+|`409`|原始估值表文件已损坏，请重新上传原文件|原始文件内容已损坏、无法读取；同样只能重新上传该日原件|
+
+两者都不能靠更换 output 路径或重复下载解决，改用其他报告 ID 取到的是别的报告；重新上传按同日覆盖规则准备，见[上传](#upload)。其他存储异常不会被伪装成文件缺失，按返回的错误详情处理，不要假定原件已丢失。
 
 返回：客户端下载元数据；不依服务端文件名选择本地路径。
 

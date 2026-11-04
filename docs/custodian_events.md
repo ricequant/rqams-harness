@@ -17,36 +17,31 @@
 |申购款入账 `subscription_fund_received`|活期存款增加、当日净投入增加|出入账日|按[份额策略](fields/products.md#unit-policy)生成申购份额＝金额 ÷ 申赎单位净值|
 |赎回款出账 `redemption_paid`|权益生效日：其他应付款（`other_payable`）增加、当日净投入减少；出入账日：冲回该应付款、活期存款减少|权益生效日与出入账日（可能同一天）|生效日生成赎回份额＝金额 ÷ 申赎单位净值|
 |产品费用实付 `product_cost_paid`|按费用类别冲减对应应付科目（计提管理费、计提托管费、计提销售服务费、计提运营费、计提业绩报酬）；签约费直接减活期存款|出入账日|不改|
-|产品分红 `product_dividend_paid`|权益生效日：其他应付款增加，并按金额计入当日每份分红；出入账日：冲回该应付款、活期存款减少|权益生效日与出入账日（可能同一天）|不改|
+|产品分红 `product_dividend_paid`|权益生效日：其他应付款增加，并按金额计入当日每份分红；出入账日：冲回该应付款、活期存款减少。带 `product_share` 时该笔金额只归属该分类份额，母产品仍按全额处理|权益生效日与出入账日（可能同一天）|不改|
 |科目调整 `subject_adjusted`|按[科目调整操作](fields/custodian_events.md#adjustoperation)改 `adjust_target` 科目：调增与调减按金额加减，调整到把余额设为给定金额|出入账日|不改|
 |份额净资产调整 `product_share_equity_adjusted`|不改科目、现金与产品净资产，只改指定分类份额的净资产|出入账日|不改|
 
-赎回款出账与产品分红是「两段式」，与其余类型的区别在生效日：**权益生效日**（`effective_date`，缺省取出入账日）记应付并结算份额、当日净投入按流出计；**出入账日**（`date`）才冲回应付、减少现金。两天相同时当天走完两段、应付款科目归零；不同时应付先挂账、支付日结清，而份额变化只发生在生效日。产品分红只减少净资产与单位净值（累计每份分红按生效日累计），不减少份额。
+赎回款出账与产品分红是「两段式」，与其余类型的区别在生效日：**权益生效日**（`effective_date`，新建或更新输入未提供时按写入规则补出入账日）记应付并结算份额、当日净投入按流出计；**出入账日**（`date`）才冲回应付、减少现金。两天相同时当天走完两段、应付款科目归零；不同时应付先挂账、支付日结清，而份额变化只发生在生效日。产品分红只减少净资产与单位净值（累计每份分红按生效日累计），不减少份额。
 
 其余口径：
 
 - 调减不会把负债科目做成负数：科目余额不足时先把该科目冲到 0，超出部分转入活期存款。
+- 产品分红的确认日取 `effective_date`；仅新建或更新输入按写入规则补默认确认日。同一明确确认日只能有一种归属模式：要么全部为带 `product_share` 的按份额分红，要么全部为无归属份额的比例分红；服务端拒绝同日混用。存量记录若在同一明确确认日两种都有，计算按定向记录执行，无归属记录不参与分摊，也不重复确认。存量记录的 `effective_date` 缺失或为空时，计算不从 `date` 反推确认日，只保留原付款处理；它们不重新确认分红，也不因上述同日定向优先规则被滤掉。
+- 按份额分红只影响目标分类：母产品仍按全部分红金额挂应付、减现金并计入母产品累计每份分红，目标分类承担其定向金额，其他分类不分摊这笔金额；分类累计每份分红与分类净资产的取分口径见[分类份额](fields/balances.md#productsharevalue)。省略 `product_share` 时才按分类权重分摊。
 - 产品费用实付的归属份额只对管理费与业绩报酬有分类明细；托管费、销售服务费、运营费按母产品口径计入，不要填 `product_share`。
 - 事件不产生交易流水。份额是否自动生成取决于产品的[份额策略](fields/products.md#unit-policy)：自动份额的产品按申赎金额与申赎单位净值折算并写入份额事件，手工修改份额的产品只改现金与科目、份额由手工份额事件决定；此时申赎金额会直接改变单位净值。
 - 当日净投入按当日重算、不是现金余额变化；估值表覆盖日的当日盈亏会把当日托管现金流单独扣除，口径见[头寸字段字典](fields/balances.md#net-cash-in)与[当日盈亏](fields/balances.md#daily-pnl)。
 - 日内的实时快照与分钟序列同样应用当日事件，实时截面里的科目与现金已反映当天已录入的事件。
 
-## 从用户需求到操作
+## 相关学习案例
 
-|用户需求|操作顺序|完成条件|
-|---|---|---|
-|查看某产品在某个区间的托管事件|`list` 限定日期与类型|日期、类型、金额与调整项符合业务原始记录；列表项不含产品 ID，归属由 resource 决定|
-|查各产品最近一次录入到哪一天|`latest`|只返回当前身份可见产品的日期；没有事件的产品不出现|
-|录入一笔或一批托管事件|准备 JSON，必含 custodian_event_type 与 date → `create` → `list` 读回|effect_count 与预期条数一致；服务端不返回新记录 ID，须用 list 按日期区间取回 ID|
-|更正已录入的事件|`list` 取得事件 ID → `update` 提交完整字段 → `list` 复核|该事件字段被整体覆盖；未提供的可选字段不会保留原值|
-|删除误录事件|`list` 确认 ID 与日期 → `delete`|effect_count 与所选条数一致；删除不可撤销并触发必要重算|
-|用文件批量导入并留痕|确认文件列与归属产品 → `upload_file` → `confirmations.list` 或 `confirmations.latest('CustodianEvents')` 核对|err_msg 逐行说明问题，confirmation_ids 可下载源文件复核|
+[对账案例](demo/reconciliation-controls/README.md)展示现金、应收应付差异中如何区分真实业务事件与有凭证依据的科目调整。
 
 导入按产品整体覆盖：`upload_file` 对每个产品从文件内最早事件日期起先删除同产品既有事件，再写入文件内容，所以它是区间覆盖而不是增量追加。先导入再手工补录请在导入之后执行，否则补录会被下一次导入覆盖。
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品、事件 ID 与文件路径；写入、覆盖和删除须获得授权。网关上读取要求 `read_import_data`，写入与文件导入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品、事件 ID 与文件路径；写入、覆盖和删除须获得授权。读取要求 `read_import_data`，写入与文件导入要求目标产品 `write`；客户端不预判权限。
 
 日期为 YYYY-MM-DD；枚举传英文值，取值见[托管事件类型](fields/custodian_events.md#custodianeventtype)、[托管事件费用类别](fields/custodian_events.md#custodianeventcosttype)与[科目调整操作](fields/custodian_events.md#adjustoperation)。事件日期不能晚于产品到期日，封账与静态会计保护按出入账日期或权益生效日期判断，服务端拒绝时会说明具体原因。部分失败异常保留完整结果，不保证已写入内容回滚。
 
@@ -106,11 +101,12 @@ rqamsh custodian-events latest
 ## create
 新增一个或多个托管事件。
 
-传入单个对象或其数组；两种写法发送完全相同的请求体（都是 JSON 数组），因此不会出现「单条走一条路由、批量走另一条」的差异。必填字段只有 custodian_event_type 与 date，其余按事件类型要求：
+传入单个对象或其数组；两种写法发送完全相同的请求体（都是 JSON 数组），行为一致。必填字段只有 custodian_event_type 与 date，其余按事件类型要求：
 
 - 申赎事件（subscription_fund_received、redemption_paid）省略 sr_open_date 时取出入账日前一交易日，且不能晚于出入账日期；必须提供为正的 unit_net_value；份额产品必须填写 product_share。
 - redemption_paid 同时提供 redemption_units 时，服务端按 redemption_units × unit_net_value 覆盖 amount。
 - effective_date 仅产品分红与赎回款出账支持，省略时按出入账日期，且不能晚于出入账日期。
+- 产品分红提供 product_share 时按该分类份额定向分红：金额须为正数且最多四位小数，product_share 须在该事件的生效日（同样缺省取出入账日）已生效；同一确认日不能同时提交按份额分红与无归属份额的比例分红，否则服务端拒绝。
 - 产品费用实付必须提供 product_cost_type；科目调整必须提供 adjust_target 与 adjust_operation；份额净资产调整必须提供 product_share，金额须为正数，且 adjust_operation 只能是调增或调减。
 
 服务端批量接口不返回新记录 ID，插入后请用 `list` 按日期区间取回。
@@ -149,6 +145,8 @@ rqamsh custodian-events create --resource "授权测试产品" --input @events.j
 按事件 ID 整体覆盖修改一个托管事件。
 
 服务端用旧 ID 覆盖写入本次请求构造的事件，因此**未提供的可选字段不会保留原值**：需要保留的字段必须随请求一起提交。事件类型的必填规则与 `create` 相同，封账判断取原事件日期与本次生效日期中较早的一个。
+
+修改一条原本带归属份额的产品分红时，必须显式提交 `product_share`；要把它改成无归属份额的比例分红，须显式传 `null`，不能靠省略字段实现——省略会因“未明确提供归属份额”被拒绝，而不是静默保留或转换。同日归属模式的互斥校验同样适用于修改（排除本条原记录后比对）。
 
 Python 签名：`rqamsh.custodian_events.update(resource: str, custodian_event_id: str, data: dict[str, Any])`。
 
@@ -260,7 +258,7 @@ Python 签名：`rqamsh.custodian_events.upload_file(resources: list[str], file_
 |`err_msg`|逐行解析失败说明|array（string 元素）|—|按行说明哪一行为何失败，形如「第N行: …」|恒返回；无失败行时为空数组，非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
 |`confirmation_ids`|导入凭证 ID|array（string 元素）|—|本次为每个涉及产品生成的凭证 ID|恒返回；可用 `confirmations.list` 核对登记条数，用 `confirmations.download` 取回源文件|
 
-结果检查：先核对 err_msg 中每一行的原因，再用 `confirmations.list` 或 `confirmations.latest('CustodianEvents')` 确认凭证与登记条数，需要时用 `confirmations.download` 取回源文件复核。客户端不预判权限：成员不存在或有歧义时请求不会发出，越权由服务端或网关拒绝。
+结果检查：先核对 err_msg 中每一行的原因，再用 `confirmations.list` 或 `confirmations.latest('CustodianEvents')` 确认凭证与登记条数，需要时用 `confirmations.download` 取回源文件复核。客户端不预判权限：成员不存在或有歧义时请求不会发出，越权由平台拒绝。
 
 ```python
 result = rqamsh.custodian_events.upload_file(resources=['授权测试产品'], file_path='custodian_events.xlsx')

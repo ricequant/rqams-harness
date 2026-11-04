@@ -1,7 +1,17 @@
 # sdist 的种子是 git 跟踪的全部文件（所以 docs/ 会随包分发），再叠加 [tool.setuptools.packages.find] 指定的包；
 # wheel 则只含 rqamsh/ 与 dist-info，与 sdist 不同。
 # 下面显式排除不该分发的内容：测试、本地材料与内部开发文档（后两者不在 git 中，属于防御性声明）。
+# 核心案例与定位说明随 sdist 分发，不作为 wheel 运行包或入口。
+include CHANGELOG.md
+recursive-include docs *.md
+prune docs/demo
+include docs/demo/README.md
+recursive-include docs/demo/workspace-routing *.md *.py *.json *.csv *.xlsx
+recursive-include docs/demo/historical-trade-correction *.md *.py *.json *.csv *.xlsx
+recursive-include docs/demo/valuation-report-reconciliation *.md *.py *.json *.csv *.xlsx
+recursive-include docs/demo/reconciliation-controls *.md *.py *.json *.csv *.xlsx
+recursive-include docs/demo/returns-diagnosis *.md
 prune tests
 prune local
+prune artifacts
 exclude AGENT.md
-exclude CHANGELOG.md

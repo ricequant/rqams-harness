@@ -173,24 +173,11 @@
 - 结算金额必填集合内的类型按绝对值写入（方向由交易类型决定，不靠正负号）。
 - `estimated_delta_cash` 是服务端计算结果，不作为写入输入。
 
-## 从用户需求到操作
+## 相关学习案例
 
-|用户需求|操作顺序与输入|完成条件|
-|---|---|---|
-|查成交、资金事件或按资产/日期汇总|`list` 明确日期与筛选；单条详情用所属产品及记录 ID 调 `get`|核对 trades、total、分页和聚合口径；外部流水号不是记录 ID|
-|导入逐笔结构化数据|核对产品数据源与已配置账户 → 准备非空数组及稳定 foreign_id → `upload(data=...)`|逐项结果无未处理错误，再 list/get 对照日期、数量、价格和费用；部分失败不等于全批回滚|
-|导入券商日内或结算文件|确认账户通道、文件模板和覆盖日期，先导出旧数据 → 选择 `upload_intraday_file` 或 `upload_settlement_file`|等待导入完成，检查错误与合法行，再按日期/账户/来源重新查询；不能只核对导入数量|
-|纠正或删除已有流水|`list/get` 确认目标 → `update`，或用 `delete` 按日期/筛选（默认）或按 `trade_ids` 指定记录|变更结果与重新查询一致，并检查受影响日期的估值；删除需独立授权|
-|交付流水明细文件|`list` 确认范围 → 用相同筛选 `download` 到指定路径|文件已保存，内容日期、账户与筛选范围符合要求；分页参数可能缩小导出范围|
-|修正自动生成的红利或红股|`list` 核对除权除息日结果 → `create_auto_balance_override` 提交修正字段 → 重新查询或读头寸报表；撤销用 `delete_auto_balance_override`|`effect_count` 与重新查询结果一致；结果已按修正值更新且未影响普通流水|
+[流水导入与历史更正](demo/historical-trade-correction/README.md)展示如何区分漏导、重复和错误记录，并读回受影响估值；从差异进入时先看[对账案例](demo/reconciliation-controls/README.md)。
 
 导入、修改和删除改变估值输入，不能据写入成功直接宣称净值已更新。完成流水核对后，再检查产品计算状态和受影响日期的头寸报表。
-
-
-
-
-
-
 
 
 ## API 使用约定
@@ -295,7 +282,7 @@ Python 签名：`rqamsh.trades.upload(resource: str, data: list[dict[str, Any]],
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |`[]`|单项写入结果|object|—|一项输入的处理结果，逐项结果原样透传；失败判定只看错误字段：`err`、`err_msg`、`err_msgs`、`failed`、`error_messages` 任一非空，或 `status` 为 `FAIL`/`failed`|恒返回；任一项被判为失败即抛部分失败异常并保留完整结果，见[逐项失败容器](connection.md#item-errors)|
-|`[].err`|该项未写入原因|string|—|该项为何未写入：来源不在允许范围、解析或校验失败、该交易日已有日终结算流水|由数据决定；只是服务端可能返回的失败键之一，实际出现的键名随路由而定，非空即抛部分失败异常|
+|`[].err`|该项未写入原因|string|—|该项为何未写入：来源不在允许范围、解析或校验失败、该交易日已有日终结算流水|由数据决定；只是服务端可能返回的失败键之一，实际出现的键名随响应而定，非空即抛部分失败异常|
 |`[].id`|该项记录 ID|string|—|该项落库后的流水记录 ID|由数据决定；`trades.list` 的记录主键是 `_id`，不是本键；结构化流水写入结果的记录 ID 为 `id`（见[输入、输出与文件](connection.md#输入输出与文件)）|
 
 操作检查：逐项检查错误；出现部分失败或超时后先 list/get 查明已落入的数据，再决定重试内容；缺稳定 foreign_id 的整批重试可能重复。
@@ -350,6 +337,8 @@ rqamsh trades upload-intraday-file --resource "授权测试产品" --file-path i
 修改指定产品流水，服务端校验字段并触发必要重算。
 
 trade_id 必须是记录主键而非 foreign_id；普通 update 不能改变交易类型和 source，仍受封账及字段校验约束。
+
+更正成交日期时只提交 `datetime`，服务端按新的成交时间与资产品种重新推导 `trading_date`；普通 `update` 不接受直接修改 `trading_date`。夜盘交易日不必等于成交时间的自然日，更正后应读回两个字段核对。
 
 Python 签名：`rqamsh.trades.update(resource: str, trade_id: str, data: dict[str, Any])`。
 
@@ -412,7 +401,7 @@ Python 签名：`rqamsh.trades.delete(resource: str, *, trade_ids: list[str] | N
 |`effect_count`|实际删除条数|integer|条|按 `trade_ids` 实际删除的流水条数|由参数选择（传入 `trade_ids` 时）；ID 不存在、不属于本产品或落在封账范围内都为 `0`，`0` 不代表删除范围已清空；见[写入结果](connection.md#write-result)|
 |`status`|任务状态|string（枚举）|—|按日期删除的任务终态，`SUCCESS` 表示删除任务完成|由参数选择（按日期与筛选条件时）；失败终态由客户端抛 `task_failed`，不会当作成功返回；见[任务终态 JSON](connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例|由参数选择（按日期时）；成功终态为 `1`|
-|`data`|任务结果|object / array / null|—|按日期删除的任务产物，结构随服务端路由，不自动拆包|由参数选择（按日期时）；`0` 表示没有命中可删除的流水，范围被封账限制收窄后也可能为 `0`；删除数量字段以实际响应为准|
+|`data`|任务结果|object / array / null|—|按日期删除的任务产物，结构随接口，不自动拆包|由参数选择（按日期时）；`0` 表示没有命中可删除的流水，范围被封账限制收窄后也可能为 `0`；删除数量字段以实际响应为准|
 
 操作检查：按日期删除前先用 list 以相同条件预览并留存，确认 is_query_assistant 的主/副表选择；按 ID 删除前核对每个 ID 的产品归属和删除授权，保留所需明细。返回后重新查询同一范围或记录；封账限制、零影响数量和任务超时都不代表删除范围已清空，受影响日期的估值需另行核对。
 
@@ -573,7 +562,7 @@ rqamsh trades create-auto-balance-override --resource "授权测试产品" --inp
 
 ## delete_auto_balance_override
 
-按记录 ID 删除一条自动权益编辑，并按该记录的除权除息日提交重算。记录 ID 不是流水 ID，也不能从 `create_auto_balance_override` 的返回取得（它只回 `effect_count`），Harness 与直连接口都没有独立的自动权益编辑查询操作；可用的取值来源是 `trades.list`：被编辑过的自动权益流水会带 `auto_balance_edited` 为真与 `auto_balance_override_id`（见[交易流水字段](fields/trades.md#trade)），用该值删除。自动权益流水只在标的真实发生分红/送转且产品当日持有该标的时生成，因此编辑记录可以先于任何自动权益流水存在（写入不做这类校验），但那时它的 ID 无法经 API 取得，只能使用外部渠道已知且属于该产品的记录 ID。记录不存在时返回 `effect_count=0`，不会提交重算。
+按记录 ID 删除一条自动权益编辑，并按该记录的除权除息日提交重算。记录 ID 不是流水 ID，也不能从 `create_auto_balance_override` 的返回取得（它只回 `effect_count`），Harness 与直接调用接口都没有独立的自动权益编辑查询操作；可用的取值来源是 `trades.list`：被编辑过的自动权益流水会带 `auto_balance_edited` 为真与 `auto_balance_override_id`（见[交易流水字段](fields/trades.md#trade)），用该值删除。自动权益流水只在标的真实发生分红/送转且产品当日持有该标的时生成，因此编辑记录可以先于任何自动权益流水存在（写入不做这类校验），但那时它的 ID 无法经 API 取得，只能使用外部渠道已知且属于该产品的记录 ID。记录不存在时返回 `effect_count=0`，不会提交重算。
 
 删除只影响这一条修正，不删除自动生成的权益流水本身。
 

@@ -1,6 +1,6 @@
 # asset_units 字段字典
 
-需要在产品内单独估值或绑定持仓时，使用[资产单元操作](../asset_units.md)的 `rqamsh.asset_units.create/update`，再以 `list/get` 核对归属产品、`symbol` 和配置。资产单元名称使用 `symbol`，ID 从返回记录取得，不是产品内账户。本页只列字段与业务含义；创建、更新与上传规则见[资产单元操作](../asset_units.md)和[持仓单操作](../positions_statements.md)，本页不逐行重复。`只读` 表示服务端生成。
+资产单元目前只用于收益互换（`total_return_swap`）的底层组合；需要在产品内为互换单独估值或绑定持仓时，使用[资产单元操作](../asset_units.md)的 `rqamsh.asset_units.create/update`，再以 `list/get` 核对归属产品、`symbol` 和配置。资产单元名称使用 `symbol`，ID 从返回记录取得，不是产品内账户。本页只列字段与业务含义；创建、更新与上传规则见[资产单元操作](../asset_units.md)和[持仓单操作](../positions_statements.md)，本页不逐行重复。`只读` 表示服务端生成。
 
 需要数量对账时，使用[持仓单操作](../positions_statements.md)的 `rqamsh.positions_statements.upload/list`。持仓单仅支持文件上传；下表用于解释记录和准备对应通道文件内容，不是可直接提交的 JSON 写入格式。`list` 使用 `is_detail=True` 才含 `positions`；删除使用查询返回的 `positions_statement_id`，不要假设所有结果都叫 `id`。
 
@@ -16,7 +16,7 @@
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`asset_class`|资产类别|string（枚举）|—|枚举[资产品种与会计科目](others.md#assetclass)|创建时要让绑定生效，应取 `total_return_swap`（默认 `asset_unit` 不会命中绑定键），见[资产单元与收益互换持仓](../asset_units.md#asset-unit-binding)|
+|`asset_class`|资产类别|string（枚举）|—|枚举[资产品种与会计科目](others.md#assetclass)|当前只用于收益互换底层组合；创建时应显式取 `total_return_swap`，默认 `asset_unit` 不会命中绑定键，见[资产单元与收益互换持仓](../asset_units.md#asset-unit-binding)|
 |`order_book_id`|证券/合约代码|string|—|不是自定义合约记录 ID|—|
 |`symbol`|显示名称|string|—|标的或资产单元显示名称|—|
 |`start_date`|起始日期|string|YYYY-MM-DD|产品/单元起始日期|—|

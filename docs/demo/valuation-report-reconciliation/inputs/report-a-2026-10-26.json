@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-26",
+  "total_equity": 1000000.0,
+  "units": 1000000.0,
+  "unit_net_value": 1.0,
+  "acc_unit_net_value": 1.0,
+  "positions": [
+    {
+      "order_book_id": "CNY",
+      "symbol": "活期存款",
+      "asset_class": "current_deposit",
+      "direction": "long",
+      "market_value": 1000000.0
+    }
+  ]
+}

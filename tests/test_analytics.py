@@ -29,11 +29,11 @@ def _weekly_submit(state):
 
 
 def test_schema_exposes_analytics_blocks_with_full_operation_counts():
-    """工作空间与权限块独立后块数为 19；30 个分析/指标操作必须全部注册，缺一个都会改变对外能力面。"""
+    """工作空间、权限与模拟交易块独立后块数为 20；30 个分析/指标操作必须全部注册，缺一个都会改变对外能力面。"""
     from rqamsh.cli import schema
 
     blocks = schema()
-    assert len(blocks) == 19
+    assert len(blocks) == 20
     # 块级断言：2026-09-21 并入的 indicators 块不存在（与 analytics.indicators 操作名无关）。
     assert "indicators" not in blocks
     assert len(blocks["analytics"]) == 30
@@ -45,7 +45,8 @@ def test_schema_exposes_analytics_blocks_with_full_operation_counts():
     assert len(blocks["permissions"]) == 4
     assert len(blocks["risk_monitor"]) == 11
     assert len(blocks["market_data"]) == 11
-    assert sum(len(ops) for ops in blocks.values()) == 146
+    assert len(blocks["paper_trading"]) == 8
+    assert sum(len(ops) for ops in blocks.values()) == 154
 
 
 def test_indicators_sends_range_benchmark_and_extra_indicators(service):

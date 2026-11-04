@@ -128,17 +128,23 @@ def test_instruments_default_limit_is_applied(service):
     assert "limit=20" in query and "instrument_type" not in query
 
 
-def test_index_futures_basis_passes_optional_switches(service):
-    """可选的复权与字段参数只在提供时下发。"""
+def test_index_futures_basis_always_exposes_dividend_caliber(service):
+    """默认口径必须显式下发 false，对象结果要带回 dividend_adjusted，避免两种基差混用。"""
     client, state = service
-    state["responses"] = [(200, [])]
-    client.market_data.index_futures_basis()
-    assert "dividend_adjusted" not in _query(state)
+    state["responses"] = [(200, {"snapshot_indicators": []})]
+    result = client.market_data.index_futures_basis()
+    assert "dividend_adjusted=false" in _query(state)
+    assert result["dividend_adjusted"] is False
 
-    state["responses"] = [(200, [])]
-    client.market_data.index_futures_basis(dividend_adjusted=False, fields="basis")
+    state["responses"] = [(200, {"snapshot_indicators": [], "dividend_adjusted": True})]
+    result = client.market_data.index_futures_basis(dividend_adjusted=True, fields="basis")
     query = _query(state)
-    assert "dividend_adjusted=false" in query and "fields=basis" in query
+    assert "dividend_adjusted=true" in query and "fields=basis" in query
+    assert result["dividend_adjusted"] is True
+
+    with pytest.raises(HarnessError) as error:
+        client.market_data.index_futures_basis(dividend_adjusted=None)
+    assert error.value.code == "invalid_argument"
 
 
 def test_customized_benchmarks_lists_without_params(service):

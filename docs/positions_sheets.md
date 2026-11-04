@@ -23,18 +23,10 @@
 
 因此按意图选入口：需要覆盖分类份额、指定结算币种价格，或要受产品「采用报告」设置约束时用[估值报告](valuation_reports.md#upload)；只需要给出某日的完整持仓截面、且希望写入即按当日截面生效时用本页的 `upsert`。
 
-## 从用户需求到操作
-
-|用户需求|操作顺序|完成条件|
-|---|---|---|
-|查看某产品已有持仓表|`get` 限定日期区间|返回的日期、净资产、份额与持仓符合目标区间；同日只有一份持仓表|
-|导入或更正某日持仓表|准备 JSON，必含 date、total_equity、units、unit_net_value、positions → `upsert` → `get` 读回|成功计数与预期一致、error_messages 为空；同日旧表被覆盖而不是追加|
-|确认某个日期为什么没写进去|读取 upsert 返回的 error_messages|该日期已存在估值表覆盖时按跳过处理；此时产品头寸以估值表为准|
-|移除误导入的持仓表|`get` 确认日期并取得授权 → `delete(dates=...)` → 重新查询|effect_count 与所选日期数一致；删除参数是日期，不是记录 ID|
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与日期；写入、覆盖和删除须获得授权。网关上读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与日期；写入、覆盖和删除须获得授权。读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
 
 日期为 YYYY-MM-DD。写入按产品与日期 upsert：同一日期再次写入是整体覆盖，不是按持仓逐条合并，因此提交内容必须是该日完整的持仓集合。当日的估值表覆盖优先级更高，被跳过的日期会出现在 error_messages 中并触发部分失败异常；成功写入的日期会生成一张来源为 PositionsSheet 的导入凭证，可用 `confirmations.latest('PositionsSheet')` 核对。
 

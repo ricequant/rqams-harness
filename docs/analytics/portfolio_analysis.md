@@ -24,7 +24,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 - group_returns_correlation：不接受 `benchmark`。
 - group_overview_file：额外需要 `output`，任务终态后才落盘，目标文件已存在时抛错。
 
-这七个操作都是任务型的：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，业务结果在 `data` 内（`task_id`、`status`、`message` 的含义见[任务终态 JSON](../connection.md#task-result)）。逐操作的表结构如下。
+这七个操作都是任务型的：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，业务结果在 `data` 内（`task_id`、`status`、`message` 的含义见[任务终态 JSON](../connection.md#task-result)）。逐操作的表结构如下。
 
 **`group_indicators`**
 
@@ -32,7 +32,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|成员指标数组|array（object）|—|一名成员一条，元素含下列键|`status` 为 `SUCCESS` 时返回；成员数可能少于 `resources`（不可见或已删除的成员、没有成员产品的产品组被丢弃）|
@@ -91,7 +91,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|成员收益序列数组|array（object）|—|首条恒为基准记录，其后每个算得出指标的成员一条，元素含下列键|`status` 为 `SUCCESS` 时返回；区间内无数据的成员不占一条，元素数可能少于 `resources` 数量加一|
@@ -116,7 +116,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|规模走势数组|array（object）|—|区间内每个有估值的日期一条，元素含下列键|`status` 为 `SUCCESS` 时返回；成员全部不可见或日期都落在[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)之外时为空数组 `[]`|
@@ -134,7 +134,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|配置权重|object|—|以交易资产属性中文名为键，值为「子类型中文名 → 权重」的对象|`status` 为 `SUCCESS` 时返回；全部成员当日都没有持仓时为空对象 `{}`|
@@ -144,13 +144,15 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 结果检查：两个层级的键都是中文业务名（股票与基金的子类型细分匹配失败时保留服务端原始取值），不是 `asset_class` 枚举值；权重分母是当日有持仓成员的净资产合计，不等于某一成员内部的持仓占比，带符号市值可让权重为负。
 
+`end_date` 晚于最近结算日时，服务端读取同一日的实时截面，不改用上一结算日的日终头寸；该截面尚未产出时任务保持等待并重试，**不会**返回不完整权重、零权重或前一日结果，成员已有明确的实时计算失败时则直接以失败终态结束并保留原因。因此任务成功终态才表示截止日截面可用；等待到 `wait_timeout` 只表示停止等待，应按[未就绪与缺输入](../connection.md#unready-inputs)复读同一请求，不能改用邻近日期或 `0` 顶替。成员按实时曲线归属日已过自身到期日时，该成员不产出当日结果、也不参与当日权重合计，这种缺项属于生命周期边界而不是未就绪。
+
 **`group_returns_correlation`**
 
 返回：`data` 为收益相关性矩阵，按频率分组；表中的 `{frequency}` 代入 `daily`、`weekly`、`monthly`，`{成员名}` 是成员名称动态键，二者都不是实际 JSON 键。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|收益相关性|object|—|按频率给出成员两两相关系数|`status` 为 `SUCCESS` 时返回；成员公共区间为空或全部成员取不到数据时为空对象 `{}`|
@@ -167,7 +169,7 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|超额收益相关性|object|—|按频率给出成员两两几何超额收益相关系数|`status` 为 `SUCCESS` 时返回；成员公共区间为空或全部成员取不到数据时为空对象 `{}`|
@@ -294,7 +296,7 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 |`asset_class` / `direction`|`str \| None`|`None`|资产类别与买卖方向过滤。|
 |`algo_type` / `algo_name` / `algo_time_span` / `display_mode`|`str \| None`|`None`|算法交易过滤与展示参数；只在提供时下发。|
 
-这三个操作也都是任务型的：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，业务结果在 `data` 内（含义见[任务终态 JSON](../connection.md#task-result)）。
+这三个操作也都是任务型的：首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，业务结果在 `data` 内（含义见[任务终态 JSON](../connection.md#task-result)）。
 
 **`trading_analysis`**
 
@@ -302,7 +304,7 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|区间交易分析记录|array（object）|—|一个元素一个「资产类别 + 标的代码 + 标的名称 + 方向」分组，含下列键|`status` 为 `SUCCESS` 时返回；区间内没有持仓盈亏时为空数组 `[]`|
@@ -323,13 +325,13 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|单标的分析结果|object|—|恒含下列五个键|`status` 为 `SUCCESS` 时返回|
-|`data.prev_adjusted_price_series`|前复权价格序列|array（object）|—|区间内该标的的逐日价格，元素含下列键|恒返回；区间内取不到行情时为空数组 `[]`|
+|`data.prev_adjusted_price_series`|前复权价格序列|array（object）|—|区间内该标的的逐日价格，元素含下列键|恒返回；区间内取不到行情、或自定义合约候选有歧义且无有效公允价时为空数组 `[]`|
 |`data.prev_adjusted_price_series[].date`|日期|string|YYYY-MM-DD|该条价格对应的业务日|随父级记录返回|
-|`data.prev_adjusted_price_series[].price`|前复权价格|number / null|—|按资产类别取价：基金取[复权净值](https://www.ricequant.com/doc/rqdata/python/fund-mod#rqdata-API-fund-get_nav)，期货与期权取结算价，ETF 取 IOPV，LOF 取前复权收盘价并用复权净值补缺，其余取前复权收盘价|随父级记录返回；区间前段无行情时为 `null`，非行情日沿用前一交易日价格；不是成交价，量纲随资产类别变化|
+|`data.prev_adjusted_price_series[].price`|前复权价格|number / null|—|按资产类别取价：自定义合约取自身公允价；基金取[复权净值](https://www.ricequant.com/doc/rqdata/python/fund-mod#rqdata-API-fund-get_nav)，期货与期权取结算价，ETF 取 IOPV，LOF 取前复权收盘价并用复权净值补缺，其余取前复权收盘价|随父级记录返回；自定义合约的候选口径见本小节末；区间前段无行情时为 `null`，非行情日沿用前一交易日价格；不是成交价，量纲随资产类别变化|
 |`data.position_quantity_series`|持仓数量序列|array（object）|—|该标的的逐日持仓，元素含下列键|恒返回；区间内没有该标的持仓时为空数组 `[]`|
 |`data.position_quantity_series[].date`|日期|string|YYYY-MM-DD|该条持仓对应的业务日|随父级记录返回|
 |`data.position_quantity_series[].quantity`|持仓数量|number|—|该日该标的的持仓数量|随父级记录返回；该日无持仓时补 `0`，不是 `null`；数量单位随资产类别变化，不是成交数量|
@@ -341,7 +343,13 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 |`data.sell_points`|卖出日期数组|array（string 元素）|—|区间内该标的卖出流水的业务日，日期去重|恒返回；条件与 `data.buy_points` 相同|
 |`message`|任务提示|string / null|—|服务端说明文案|由数据决定；运行中或失败时出现，成功终态可能没有该键|
 
-结果检查：`asset_class`、`direction` 与 `order_book_id` 一起确定唯一标的，省略 `asset_class` 或 `direction` 时定位不到持仓，持仓与盈亏序列会返回空数组；价格按资产类别取自复权净值、结算价、ETF 的 IOPV 或前复权收盘价，不是成交价。
+自定义合约（场外合约）的取价口径：价格只来自该合约的公允价，候选按「当前工作空间 + 资产类别 + 合约代码」定位，并限定当前产品或产品组成员绑定的合约与工作空间共享合约，不会取到其他产品的定义。
+
+- 产品与单成员产品组：命中唯一的产品绑定合约时用它；没有产品绑定、且工作空间共享合约唯一时用该共享合约；命中多份绑定或多份共享合约时视为歧义，不任取其一。
+- 多成员产品组：成员可能各自维护同一代码的不同价格，只有「没有任何成员专属覆盖、且共享合约唯一」时才用该共享公允价；否则视为歧义。
+- 公允价只取结束日（含当日）及以前的点，非法值与非有限值跳过；歧义或没有有效公允价时价格序列为空数组，不回退到同代码的标准行情，也不用当日 tick 或持仓公允价值补齐。
+
+结果检查：`asset_class`、`direction` 与 `order_book_id` 一起确定唯一标的，省略 `asset_class` 或 `direction` 时定位不到持仓，持仓与盈亏序列会返回空数组；价格按资产类别取自自定义合约公允价、复权净值、结算价、ETF 的 IOPV 或前复权收盘价，不是成交价；自定义合约价格序列为空时要报告候选歧义或补公允价，不能改用标准行情顶替。
 
 **`algo_trading_performance`**
 
@@ -349,7 +357,7 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例；成功终态为 `1`|恒返回；见[任务终态 JSON](../connection.md#task-result)|
 |`data`|算法绩效结果|object|—|含 `items`、`total`、`warnings`，三者恒同时返回|`status` 为 `SUCCESS` 时返回|

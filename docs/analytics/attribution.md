@@ -3,7 +3,7 @@
 归因把区间收益拆解到基准、行业与风格等维度：先提交归因任务，再按归因 ID 读取结果，需要归档时导出工作簿；实时截面走 `realtime_factor_exposure` 与 `realtime_risk_attribution`。归因结果是服务端算好的分析结果，不是新的估值数据；指标口径见[净值与收益指标](metrics.md#indicators-returns)。
 
 本页是 [analytics 总览](index.md) 的子页：用户需求与完成条件见[总览的场景表](index.md#从用户需求到操作)，`resource`/`resources` 语义与阻塞式调用等公共约定见[总览](index.md#api-使用约定)；本页涉及的外部数据调用与官方页面见 [RQData 官方调用来源](../rqdata.md#rqdata-calls)。
-- `attribution` 与 `export_attribution` 依赖已存在的归因 ID；删除归因按 ID 直接删除，网关要求 `read_position`，权限不足时以服务端错误返回。
+- `attribution` 与 `export_attribution` 依赖已存在的归因 ID；删除归因按 ID 直接删除，平台要求 `read_position`，权限不足时以服务端错误返回。
 
 ## create_attribution
 
@@ -36,7 +36,7 @@ Python 签名：`rqamsh.analytics.create_attribution(resource: str, *, start_dat
 ## attribution
 
 按归因 ID 查询归因结果。
-- attribution：运行中的归因会持续返回进行中状态，Harness 在同一查询路由重复读取，不会重新提交计算。
+- attribution：运行中的归因会持续返回进行中状态，Harness 在同一查询操作重复读取，不会重新提交计算。
 
 Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str)`。
 
@@ -110,12 +110,12 @@ Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str
 |`result.attribution.sensitivity[].data[].t_statistics`|敏感度 t 值|number|—|该回归系数的 t 统计量|随父级返回|
 |`result.is_benchmark_weight_daily`|基准权重是否按日更新|boolean|—|按基准类型与权重来源判定；服务端不消费该键|由参数选择：`template` 为 `equity/brinson`、`equity/factor`、`equity/factor_v2` 之一时返回|
 
-结果检查：用 `_id` 做后续查询与导出；运行态由客户端在同一查询路由自动轮询到终态，不必重新提交；若已返回归因记录却缺 `result`，按同一归因 ID 重查该读取，不要重新提交 `create_attribution`，也不要把缺失当作空归因结果。
+结果检查：用 `_id` 做后续查询与导出；运行态由客户端在同一查询操作自动轮询到终态，不必重新提交；若已返回归因记录却缺 `result`，按同一归因 ID 重查该读取，不要重新提交 `create_attribution`，也不要把缺失当作空归因结果。
 
 ## delete_attribution
 
 删除归因记录。
-- delete_attribution：按归因 ID 直接删除，返回 null；网关要求 `read_position`，客户端不预判权限。
+- delete_attribution：按归因 ID 直接删除，返回 null；平台要求 `read_position`，客户端不预判权限。
 
 Python 签名：`rqamsh.analytics.delete_attribution(resource: str, attribution_id: str)`。
 
@@ -164,16 +164,17 @@ Python 签名：`rqamsh.analytics.realtime_risk_attribution(resource: str, *, te
 |`brinson_industry_standard`|`str \| None`|`None`|Brinson 模板下的行业分类标准。|
 |`drilldown`|`bool`|`False`|是否对资产单元穿透。|
 
-服务端不接受日期参数，固定以北京时间当天作为归因区间，因此当天不是交易日时该操作必然失败（报错为「分析区间内没有交易日」），调用方无法通过参数换区间——需要指定区间时必须用 `create_attribution`。实时因子暴露 `realtime_factor_exposure` 走另一套实时序列检查，不受此限制。
+服务端不接受日期参数，固定以北京时间当天作为归因区间。当天不是交易所交易日时，首次请求不进入计算，直接返回成功终态 `{"status":"SUCCESS","progress":1,"data":{}}`：这是「当日没有可计算的实时归因」，不是任务失败，也不能解读为归因收益或暴露度为 `0`；该响应不含 `task_id`，重试同一请求不会给出其他结果。需要指定区间或非交易日归因时必须用 `create_attribution`。实时因子暴露 `realtime_factor_exposure` 走另一套实时序列检查，不受此限制。
 
-返回：首发 202 返回 `task_id`，随后轮询同一路由得到终态 JSON，归因结果在 `data` 内。`data` 是当次实时因子归因结果，服务端在同一次任务内把实时行业归因并入 `attribution.brinson`；键集合固定，但因子列表随当日持仓与暴露度数据变化。
+返回：交易日首发 202 返回 `task_id`，随后轮询同一操作得到终态 JSON，归因结果在 `data` 内。交易日成功结果的 `data` 含实时因子归因及同一次任务合入的实时行业归因 `attribution.brinson`，因子列表随当日持仓与暴露度数据变化。交易所非交易日直接返回 `status='SUCCESS'`、`progress=1`、`data={}`，不含 `task_id`、`data.attribution` 及其子字段。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一路由轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
-|`status`|任务状态|string（枚举）|—|`SUCCESS` 表示任务完成，`FAIL` 表示失败，运行中为 `DOING`、`PENDING` 等|轮询响应恒返回；见[任务终态 JSON](../connection.md#task-result)|
-|`data`|实时风险归因结果|object|—|实时因子归因结果与同一次任务内合入的实时行业归因；字段见下列各行|由数据决定；`status` 为 `SUCCESS` 时返回|
-|`data.attribution`|实时归因结果容器|object|—|只含 `factor_attribution` 与 `brinson` 两个键；没有 `returns_decomposition`、`excel_report`、`factor_exposure`、`sensitivity`|随父级返回|
+|`task_id`|任务 ID|string|—|首发响应给出的任务标识，Harness 用它在同一操作轮询到终态|首发 202 时恒返回；见[任务终态 JSON](../connection.md#task-result)|
+|`status`|任务状态|string（枚举）|—|取值与终态判断见[任务终态 JSON](../connection.md#task-result)|随响应返回；交易所非交易日直接返回 `SUCCESS`|
+|`progress`|任务进度|number|0 到 1|服务端上报的执行进度，见[任务终态 JSON](../connection.md#task-result)|随响应返回；交易所非交易日直接成功时为 `1`|
+|`data`|实时风险归因结果|object|—|实时因子归因结果与同一次任务内合入的实时行业归因；字段见下列各行|`status` 为 `SUCCESS` 时返回；交易所非交易日为 `{}`，此时不含 `attribution`|
+|`data.attribution`|实时归因结果容器|object|—|只含 `factor_attribution` 与 `brinson` 两个键；没有 `returns_decomposition`、`excel_report`、`factor_exposure`、`sensitivity`|由数据决定；交易日成功结果返回|
 |`data.attribution.factor_attribution`|因子归因|array（object）|—|5 个固定类别元素，排序与区间归因一致|随父级返回|
 |`data.attribution.factor_attribution[].type`|因子类别|string|—|`style`、`industry`、`country`、`specific_return`、`other`|随父级返回|
 |`data.attribution.factor_attribution[].factors`|因子项列表|array（object）|—|该类别下的因子项；可能为空数组|随父级返回|
@@ -194,7 +195,7 @@ Python 签名：`rqamsh.analytics.realtime_risk_attribution(resource: str, *, te
 |`message`|任务提示|string / null|—|服务端说明文案|由数据决定；运行中或失败时出现，成功终态可能没有该键；提示级别见 `message_type` 行|
 |`message_type`|提示级别|string|—|`error`／`warning`：区分失败原因与可继续解读的提示（基准权重按月度近似时为 `warning`）|由数据决定；与 `message` 同时出现|
 
-结果检查：`data` 的键固定为因子归因与实时行业归因两族，但因子列表随当日持仓与暴露度数据变化，解读前先看实际键；当天不是交易日时任务必然失败，这不是数据缺口。
+结果检查：交易日成功结果的 `data` 含因子归因与实时行业归因两族，因子列表随当日持仓与暴露度数据变化，解读前先看实际键；交易所非交易日返回成功终态与空 `data`，表示当日无可计算的实时归因，既不是任务失败，也不是归因收益为 0。
 
 ## realtime_factor_exposure
 

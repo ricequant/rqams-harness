@@ -18,6 +18,7 @@ from .permissions import Permissions
 from .analytics import Analytics
 from .risk_monitor import RiskMonitor
 from .market_data import MarketData
+from .paper_trading import PaperTrading
 
 
 RESOURCE_CLASSES: dict[str, type[_Resource]] = {
@@ -40,4 +41,5 @@ RESOURCE_CLASSES: dict[str, type[_Resource]] = {
     "analytics": Analytics,
     "risk_monitor": RiskMonitor,
     "market_data": MarketData,
+    "paper_trading": PaperTrading,
 }

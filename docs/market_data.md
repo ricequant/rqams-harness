@@ -6,18 +6,6 @@
 
 本页涉及的外部数据调用与官方页面见 [RQData 官方调用来源](rqdata.md#rqdata-calls)。
 
-## 从用户需求到操作
-
-|用户需求|API 与输入准备|完成条件|
-|---|---|---|
-|确认可用基准|`benchmarks` 列出[内置基准](https://www.ricequant.com/doc/rqdata/python/indices-mod#rqdata-API-indices_list)|取得基准 ID（如 `000300.XSHG`），不能凭名称猜代码|
-|取基准区间收益|`benchmark_returns`，显式给基准、区间与日历口径|按 `returns` 逐日拆出日收益与累计收益；区间无行情时不是零收益|
-|看基准当日分时收益|`realtime_benchmark_returns`|返回分钟级收益；无数据时为空数组，不能当零|
-|维护自定义基准|`customized_benchmarks` 查看 → `create_customized_benchmark` 新建或 `update_customized_benchmark` 整体覆盖 → `delete_customized_benchmark` 删除|类型只能是复合或固定数值；复合基准的成分权重之和为 1，权重块起始日期不重复|
-|对齐分析区间|`trading_dates` 取交易所[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)|按 `fmt` 返回日期或时间戳；只支持交易所日历，不支持产品日历|
-|[把名称换成代码](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-all_instruments)|`instruments`，给关键词或资产类别|返回标的代码、名称、资产类别与类型；至少要给一个检索条件|
-|取指定代码的[实时快照](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-current_snapshot)|`realtime_quotes`|返回最近价、涨跌额与涨跌幅；停牌或未订阅时可能缺项|
-|看指数期货基差|`index_futures_basis`|默认返回快照、分钟线与历史；快照与分钟线依赖盘中缓存，缓存未就绪时该次调用失败|
 
 ## API 使用约定
 
@@ -178,7 +166,7 @@ Python 签名：`rqamsh.market_data.trading_dates(type: str, *, start_date: str 
 
 ## instruments
 检索标的；标的详情与到期日取自 [合约基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)，名称与拼音前缀匹配的全量清单见 [全部合约](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-all_instruments)。
-- instruments：`q`、`asset_class`、`instrument_type` 至少要给一个，否则服务端直接拒绝；结果条数受 `limit` 限制。
+- instruments：`q`、`asset_class`、`instrument_type` 至少要给一个，否则服务端直接拒绝；`limit` 为负数时返回匹配条件下的全量快照，不是「最后若干条」。
 
 Python 签名：`rqamsh.market_data.instruments(*, q: str | None=None, asset_class: str | None=None, instrument_type: str | None=None, limit: int=20)`。
 
@@ -187,13 +175,15 @@ Python 签名：`rqamsh.market_data.instruments(*, q: str | None=None, asset_cla
 |`q`|`str \| None`|`None`|关键词：中文走名称匹配，其他走代码或拼音前缀匹配。|
 |`asset_class`|`str \| None`|`None`|资产类别过滤。|
 |`instrument_type`|`str \| None`|`None`|标的类型过滤。|
-|`limit`|`int`|`20`|返回条数上限。|
+|`limit`|`int`|`20`|返回条数上限；非负整数走普通检索（`0` 只返回空数组，超过 `10000` 被拒绝），负数表示返回匹配条件下的全量快照。|
 
 返回：标的数组。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|标的|array（object 元素）|—|每个命中标的的 `order_book_id`（标的代码）、`symbol`（名称）、`abbrev_symbol`（简称）、`trading_asset_class`（资产类别）与 `instrument_type`（标的类型）|恒返回；服务端只返回这五个键，条数受 `limit` 限制|
+|`[]`|标的|array（object 元素）|—|每个命中标的的 `order_book_id`（标的代码）、`symbol`（名称）、`abbrev_symbol`（简称）、`trading_asset_class`（资产类别）与 `instrument_type`（标的类型）|恒返回；服务端只返回这五个键；普通检索最多 `limit` 条，全量快照返回匹配条件下的全部标的，不再受 `10000` 限制|
+
+某个检索条件的全量快照首次被请求时，服务端可能先返回 202 表示快照正在生成，客户端会自动重查同一读取直到取到快照或达到等待上限；202 不是错误，但全量结果的构建与传输明显更慢，能缩小 `q`、`asset_class` 或 `instrument_type` 时不要直接取全量。
 
 检索是模糊匹配，命中的第一名不一定就是目标标的，写入前核对代码。
 
@@ -221,17 +211,18 @@ Python 签名：`rqamsh.market_data.realtime_quotes(order_book_ids: str | list[s
 
 各口径的外部来源：品种与合约列表取自 [期货合约列表](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_contracts)，指数期货基差快照取自 [期货当前基差](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_current_basis)，基差序列取自 [期货基差](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_basis)，基差分红调整取自 [预测分红点数](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_predicted_dividend_point)，开盘基差口径取自 [实时逐笔成交](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_live_ticks)。
 
-Python 签名：`rqamsh.market_data.index_futures_basis(*, dividend_adjusted: bool | None=None, fields: str | None=None)`。
+Python 签名：`rqamsh.market_data.index_futures_basis(*, dividend_adjusted: bool=False, fields: str | None=None)`。
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
-|`dividend_adjusted`|`bool \| None`|`None`|是否使用分红调整口径；省略时服务端按 `false` 处理。|
+|`dividend_adjusted`|`bool`|`False`|`True` 使用分红调整口径，`False` 使用未调整口径；每次调用都显式下发，不接受 `None`。|
 |`fields`|`str \| None`|`None`|`snapshot`、`minbar_series`、`history` 的组合；省略时服务端取三者全部。|
 
-返回：对象，按 `fields` 分键给出基差数据；`snapshot_indicators` 恒定返回。
+返回：对象，按 `fields` 分键给出基差数据；`snapshot_indicators` 恒定返回。客户端在对象结果中补 `dividend_adjusted`，明确本次结果使用的口径，不能把两种口径的基差当成同一序列。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
+|`dividend_adjusted`|分红调整口径|boolean|—|`true` 为分红调整，`false` 为未调整|恒返回；由本次请求参数确定，回答时必须同时说明该口径|
 |`snapshot_indicators`|品种与合约|array（object 元素）|—|每个品种一项：`order_book_id`（品种，如 `IF`）、`symbol`（品种名）与 `children`（合约数组，元素含 `order_book_id`；取过快照后每项另含 `date`、`current_basis`、`basis_annual_rate`、`maturity_dates`（number，距到期天数）、`acc_basis_diff`（number 或 null））|恒返回；盘前只有 `order_book_id`，用于渲染品种与合约列表|
 |`history_basis_series`|历史基差序列|object|—|键为合约代码，值为该合约的记录数组（元素含 `date`（YYYY-MM-DD）、`basis`（number，结算价升贴水）、`basis_annual_rate`（number，年化升贴水率））|由参数选择；`fields` 含 `history` 时才返回|
 |`minbar_series`|当日分钟线基差|object|—|键为合约代码，值为该合约的分钟记录数组（元素含 `date`、`basis`、`basis_annual_rate`），开盘第一个基差点排在最前|由参数选择；`fields` 含 `minbar_series` 时才返回，9:25 前不取|

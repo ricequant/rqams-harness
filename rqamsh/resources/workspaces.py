@@ -1,4 +1,4 @@
-"""工作空间：列举当前身份可见的数据分区，并在会话内切换。"""
+"""工作空间：读取用户的成员空间，并为后续 AMS 请求明确选择目标。"""
 
 from __future__ import annotations
 
@@ -9,53 +9,47 @@ from ._base import _Resource, _text
 
 
 class Workspaces(_Resource):
-    """工作空间的列举与切换。
-
-    Args:
-        client: 已连接的业务客户端；切换只改变该客户端后续请求的数据分区。
-    """
+    """用户级 PAT 的成员工作空间；选择空间不增加业务权限。"""
 
     def list(self) -> Any:
-        """列举当前身份可见的工作空间。
+        """读取当前 PAT 用户的全部成员空间，不要求或改变当前空间。
 
         Returns:
-            用户接口原始响应，形如 ``{"data": [记录, ...]}``；记录含 id、name、
-            admin、capacity、ctime、description、tags、users。未登录时抛
-            not_logged_in，不把「未登录」当作空列表。
+            服务端原始 ``{"data": [...]}``；记录包含 id、name 及实际返回的成员资料。
+            空列表表示用户没有成员空间，不代表凭据无效或具备 AMS 权益。
         """
-        payload = self._client.call("GET", "v1/workspaces", base=self._client.user_url)
-        if isinstance(payload, dict) and payload.get("code"):
-            raise HarnessError(
-                "not_logged_in",
-                f"用户接口未返回工作空间：{payload.get('message', '未登录')}",
-                status=401,
-                details={"response": payload},
-            )
+        payload = self._client.call(
+            "GET", "v1/workspaces", base=self._client.user_base,
+            select_workspace=False, headers={"X-AMS-Workspace": None},
+        )
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise HarnessError("invalid_response", "工作空间响应缺少成员数组", details={"response": payload})
+        seen = set()
+        for row in rows:
+            identifier = row.get("id") if isinstance(row, dict) else None
+            if (not isinstance(identifier, str) or len(identifier) != 24
+                    or any(char not in "0123456789abcdef" for char in identifier)
+                    or identifier in seen):
+                raise HarnessError("invalid_response", "成员工作空间缺少合法且唯一的 id", details={"response": payload})
+            seen.add(identifier)
         return payload
 
     def use(self, workspace: str) -> Any:
-        """把客户端切到指定工作空间，返回被选中的工作空间记录。
+        """按成员空间 ID 选择后续业务请求的目标；失败时不改变当前客户端。
 
         Args:
-            workspace: 工作空间 ID 或名称；按 ID 或名称精确匹配，歧义时拒绝切换。
+            workspace: 当前 PAT 用户所属工作空间的精确 ID，不按名称匹配。
 
         Returns:
-            被选中的工作空间记录；此后该客户端的业务请求都发往该工作空间。
+            实际命中的成员空间记录；AMS 权益和资源权限仍由业务请求独立验证。
         """
         target = _text(workspace, "workspace")
-        payload = self.list()
-        rows = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(rows, list):
-            raise HarnessError("invalid_response", "用户接口未返回工作空间数组", details={"response": payload})
-        matches = [row for row in rows if isinstance(row, dict) and target in {row.get("id"), row.get("name")}]
-        if not matches:
-            raise HarnessError("resource_not_found", "工作空间不存在或不属于当前身份", status=404, details={"workspace": target})
-        if len(matches) > 1:
+        record = next((row for row in self.list()["data"] if row["id"] == target), None)
+        if record is None:
             raise HarnessError(
-                "ambiguous_resource",
-                "工作空间存在歧义，请使用 ID",
-                status=400,
-                details={"workspace": target, "candidates": [row.get("id") for row in matches]},
+                "resource_not_found", "工作空间不存在或当前用户不是该空间成员",
+                status=404, details={"workspace": target},
             )
-        self._client.use_workspace(str(matches[0]["id"]))
-        return matches[0]
+        self._client.use_workspace(record["id"])
+        return record

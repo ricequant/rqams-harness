@@ -9,6 +9,28 @@ from ._base import _Resource, _nonempty, _selector, _text
 
 
 _DASHBOARD_FIELDS = frozenset({"minbar", "daily"})
+_RISK_OPERATIONS = frozenset({"lt", "lte", "gt", "gte"})
+_RISK_INDICATOR_TYPES = frozenset({"product", "position"})
+_RISK_INDICATORS = frozenset({
+    "risk_exposure", "net_risk_exposure", "unit_net_value", "adjusted_net_value", "daily_returns",
+    "excess_returns", "long_leverage", "long_net_risk_exposure", "quantity", "weight",
+    "price_change_percentage", "daily_pnl_rate", "contribute_returns", "floating_pnl_percentage",
+    "st", "illegal_announcement", "market_qty_weight", "market_value_weight", "latest_vr_days",
+    "latest_closing_days", "payable_weight", "payable_cash_weight", "futures_maturity_trading_days",
+})
+
+
+def _validate_risk_fields(data: dict[str, Any]) -> None:
+    """按服务端枚举校验条款字段，特别拒绝把“大于”写成 ``>``。"""
+    checks = (
+        ("operation", _RISK_OPERATIONS, "lt、lte、gt、gte"),
+        ("indicator_type", _RISK_INDICATOR_TYPES, "product、position"),
+        ("indicator", _RISK_INDICATORS, "服务端指标枚举"),
+    )
+    for field, allowed, hint in checks:
+        value = data.get(field)
+        if value is not None and (not isinstance(value, str) or value not in allowed):
+            raise HarnessError("invalid_argument", f"{field} 取值非法；允许值为 {hint}")
 
 
 def _dashboard_params(fields: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:
@@ -59,7 +81,8 @@ class RiskMonitor(_Resource):
             clauses: 非空条款数组；每项必含 level、indicator_type、indicator、
                 crontab_expression，并在 target_ids 中给出 products 或 product_groups；
                 非 st、非违规公告的指标还需 operation 与 value；level 为 3 及以上时
-                必须提供 warning_urls。服务端逐项校验，任一项非法时整批失败。
+                必须提供 warning_urls。operation 只接受 lt、lte、gt、gte，不能传 > 或「大于」；
+                indicator_type 只接受 product、position。服务端逐项校验，任一项非法时整批失败。
         Returns:
             服务端原始响应，含 inserted_count；条款归属当前用户与回测空间。
         """
@@ -67,6 +90,7 @@ class RiskMonitor(_Resource):
         for clause in clauses:
             if not isinstance(clause, dict):
                 raise HarnessError("invalid_argument", "clauses 的元素必须为对象")
+            _validate_risk_fields(clause)
         return self._client.call("POST", "risk_clauses", json=clauses)
 
     def update_clause(self, clause_id: str, data: dict[str, Any]) -> Any:
@@ -81,6 +105,7 @@ class RiskMonitor(_Resource):
         """
         if not isinstance(data, dict) or not data:
             raise HarnessError("invalid_argument", "data 必须为非空条款字段对象")
+        _validate_risk_fields(data)
         return self._client.call("PATCH", f"risk_clauses/{_text(clause_id, 'clause_id')}", json=data)
 
     def delete_clauses(self, clause_ids: list[str]) -> Any:

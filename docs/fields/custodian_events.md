@@ -18,8 +18,8 @@
 |`adjust_operation`|科目调整操作|string / null（枚举）|—|金额相对调整项的方向；枚举[科目调整操作](#adjustoperation)|份额净资产调整与科目调整使用|
 |`adjust_target`|调整目标科目|string / null|—|科目调整的目标资产类别，调整后的余额记在该科目的头寸记录上|仅科目调整使用；枚举[资产品种与会计科目](others.md#assetclass)|
 |`unit_net_value`|申赎单位净值|number / null|每单位份额金额/净值|申赎业务的单位净值，申购与赎回份额按其折算（不按开放日净值反查）|仅申赎类事件使用|
-|`effective_date`|权益生效日期|string / null|YYYY-MM-DD|权益归属的生效日期|仅产品分红与赎回款出账有业务含义，缺省取出入账日；份额结算与资金收付的两段口径见[事件类型与计算影响](../custodian_events.md#custodian-event-calculation)|
-|`product_share`|归属份额|string / null|—|事件归属的分类份额名称，决定自动份额事件的归属与分类应付明细|份额产品的申赎事件使用；分类份额定义见[分类份额估值](balances.md#productsharevalue)|
+|`effective_date`|权益生效日期|string / null|YYYY-MM-DD|权益归属的生效日期；产品分红以它为确认日|仅产品分红与赎回款出账有业务含义；新写入的默认规则、存量缺确认日记录与资金收付的两段口径见[事件类型与计算影响](../custodian_events.md#custodian-event-calculation)|
+|`product_share`|归属份额|string / null|—|事件归属的分类份额名称，取[分类份额配置](products.md#productsharesettings) `shares` 的键（单个英文字母）；决定自动份额事件的归属、产品分红的定向归属与分类应付明细|申赎、产品分红、份额净资产调整与科目调整使用；分类份额定义见[分类份额估值](balances.md#productsharevalue)|
 |`redemption_units`|赎回数量|number / null|份|按份额赎回时提交的赎回份额|仅赎回款出账使用|
 |`remarks`|备注|string / null|—|业务备注|—|
 |`id`|记录 ID|string / null|字符串 ID|服务端记录 ID|只读|

@@ -1,114 +1,68 @@
 # rqams-harness
 
-面向 AMS 用户 Agent 的 Python API 与 CLI 操作入口：将产品管理、数据导入、头寸查询、业绩分析和对账需求转换成可执行操作，业务数据与估值计算由 AMS 管理。本项目只负责需求中的「AMS 业务数据管理」一块，三类的划分见[金律](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)。先读[AMS 业务与 API 使用指南](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)，理解业务输入、头寸链与本项目的能力边界。发行包名 `rqams-harness`，Python 导入名和命令名均为 `rqamsh`；需要 Python >=3.10。
+`rqams-harness` 是 Agent 操作 AMS 的 Python API 与 CLI：发行包名 `rqams-harness`，导入名和命令名均为 `rqamsh`。它取回 AMS 已算好、已落库的业务数据，并执行受控写入；估值与业务数据由 AMS 管理，分析、报告渲染、第三方系统对接由 Agent 或第三方完成。业务主线、业务块导航、常见场景和能力边界见 [AMS 业务与 API 使用指南](https://github.com/ricequant/rqams-harness/blob/dev/docs/index.md)；把用户说法翻译成对象、动作和写入计划见 [Agent 业务翻译指南](https://github.com/ricequant/rqams-harness/blob/dev/docs/guide.md)。
 
-## 安装与离线发现
+## 安装
 
-Python >=3.10，在本项目目录：
+要求 Python >= 3.10。在本项目目录或按发布渠道安装：
 
 ```console
 python -m pip install -e .
+# 或安装发布包：python -m pip install rqams-harness
+
 rqamsh --help
 rqamsh schema
-python -m rqamsh trades upload --help
 ```
 
-`schema` 和帮助无需连接服务，可用来发现操作与参数。若终端找不到 `rqamsh`，先激活安装该包的 Python 环境，或使用 `python -m rqamsh`。
-离线 `schema` 的 `balances.get` 仅公开单一签名；它会说明 `benchmark_id` 使用纯 ID，以及过去日期使用自定义基准时只能选择顶层收益字段，不能同时返回 `positions` 或 `daily_pnls`。
+`schema` 和 `--help` 离线可用，`schema` 是当前安装版本的运行时契约。终端找不到 `rqamsh` 时，先激活安装该包的 Python 环境，或改用 `python -m rqamsh`。
 
+## 认证与连接
 
-## 作为 Agent Skill 使用
+地址省略时默认连接 RQAMS 官方地址 `https://www.ricequant.com`；私有化部署用 `--base-url` / `base_url` / `RQAMSH_BASE_URL` 覆盖。认证只有 Bearer 令牌，随每个请求发送；令牌由 AMS 平台或管理员签发。
 
-本项目配有一份供 agent 使用的 skill，位于 [`ricequant-skills`](https://github.com/ricequant/ricequant-skills) 的 `skills/basic/rqams` 技能族下；该技能族目前还在 `dev/rqams-rqamsh` 分支，尚未合并到 `main`。族级 `SKILL.md` 只做路由：安装与自检、调用形态、取文档与检索方式在子技能 `rqamsh/SKILL.md`，业务链路判断在 `references/`。契约文档的单一来源仍是本仓库的 [`docs/`](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)，skill 不复制文档内容，也不提供下载或索引脚本——agent 自行获取（首选 `git clone --depth 1` 本仓库后本地检索，也可直接读 raw 单页）。
-
-把下面这段交给你的 agent，它会自行定位技能目录并落盘：
-
-> 在 `https://github.com/ricequant/ricequant-skills` 的 `dev/rqams-rqamsh` 分支里找到 `skills/basic/rqams` 技能族（含族级 `SKILL.md`、`rqamsh/SKILL.md` 与 `references/`），把整个技能族目录复制到我使用的 agent 技能目录下（目录名 `rqams`，保持内部相对路径），然后按 `rqamsh/SKILL.md` 的引导完成初始化自检（`rqamsh schema`），最后告诉我安装的绝对路径与 `rqamsh schema` 的输出是否正常。
-
-安装后即可用它处理「取 AMS 已算好的业务数据、执行受控写入」类需求。文档与本地安装版本不一致时，以 `rqamsh schema` 的运行时输出为准。
-
-三处内容各自更新，都没有自动推送：
-
-- **技能族**：有更新后重跑同一段提示词覆盖旧副本；已装到本地的 `SKILL.md` 不会自动跟随技能仓库。
-- **契约文档**：每次任务开始时重新获取——重新 `git clone --depth 1`，或对已有的本地副本先 `git pull`；不要复用旧副本，`raw` 单页读的一直是默认分支上的最新内容。
-- **本包**：就地安装（editable）时拉取仓库最新代码后即生效，依赖有变化时重跑一次 `python -m pip install -e .`；操作是否变化以 `rqamsh schema` 为准。
-
-## 只读入门
-
-```python
-from rqamsh import Client
-
-with Client(
-    base_url="http://127.0.0.1:21015",
-    cookies={"sid": "<令牌>"},
-) as client:
-    products = client.products.list()
-    # 从已获授权的产品中选择唯一 ID 或名称。
-    # historical = client.balances.get(resource_or_resources="授权测试产品", date="2026-01-05")
-    # realtime = client.balances.get(resource_or_resources="授权测试产品")  # 省略 date 为北京时间当天的实时语义
-    # get 默认包含平铺头寸；非空 classifier 改为分层头寸。
-```
-
-示例中的地址与会话名仅说明格式，不代表可访问配置；工作空间默认使用可见空间中的第一个，需要换分区时用 `workspaces use`（CLI 用 `--workspace-id`），见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。CLI连接参数必须位于子命令前，也可由 `RQAMSH_BASE_URL`、`RQAMSH_WORKSPACE_ID`、`RQAMSH_COOKIE` 提供（只有 `RQAMSH_BASE_URL` 必需；会话怎么取得见[登录会话](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#session-injection)）：
+Agent 和自动化场景优先从权限受限文件或运行环境读取令牌，不要把令牌贴进对话、命令参数或日志：
 
 ```console
-rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> products list
+rqamsh --token @token.txt products list
+# 或由运行环境注入 RQAMSH_TOKEN
 ```
 
-模块式调用同样可用：先 `rqamsh.init(base_url, workspace_id=..., cookies={...})`，再 `rqamsh.products.get(resource=...)`，最后 `rqamsh.close()`；并行不同身份应分别持有显式 Client，不共享模块默认实例。
+人工首次使用可以直接运行业务命令；没有可用令牌时，CLI 会尝试打开浏览器页面让用户输入令牌，保存后继续原命令。无图形界面或远程运行时不要走这条路径，改用 `--token @文件` / `RQAMSH_TOKEN`。需要重新登录时运行 `rqamsh auth`。
 
-## 定位与需求拆解
+令牌关联用户而不是某个空间：同一用户可以属于多个工作空间，`rqamsh workspaces list` 读取自己的成员空间。未指定目标空间时，先沿用设置文件里保存的最后空间；没有保存空间就使用服务端成员列表首项（按服务端原序取第一项，不排序、不按 AMS 权益筛选），一个成员空间都没有时直接报错。首项缺少所需权益由服务端拒绝，不会自动换下一个；需要读其他分区时用 `--workspace-id` 或 `workspaces use`。选择空间只改请求路由，能否读写仍由服务端按成员关系、AMS 权益与资源权限判定，不要通过修改请求头扩大授权。令牌、设置文件与工作空间规则见[连接、身份、错误与等待](https://github.com/ricequant/rqams-harness/blob/dev/docs/connection.md)，成员空间的读取与选择见[工作空间](https://github.com/ricequant/rqams-harness/blob/dev/docs/workspaces.md)。
 
-**金律**：`Agent 自身能力 + 第三方能力 + rqamsh 业务数据管理能力 = 满足用户需求`。本项目只负责第三项——把 AMS 已算好、已落库的业务数据取回来，以及受控写入；第三方系统对接与调用方自己的加工不在范围内，三类的划分与真缺口判据见[金律](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)。
+## 更新本地版本
 
-## 能力与边界
+**包：**
 
-19 个业务块、146 个公开操作：工作空间、产品、产品组、资源权限、自定义标的/公允价、头寸报表、净值与收益指标、分析（持仓分析/业绩归因/组合对比/周报/交易分析）、风险监控与看板数据、市场数据与基准、流水、估值报告、资产单元、持仓单、对账、托管事件、份额事件、产品持仓表、导入凭证。它们是 AMS 整体能力的一个子集：资产单元的可用持仓（业务位置见 [`docs/asset_units.md`](https://github.com/ricequant/rqams-harness/blob/main/docs/asset_units.md#asset-unit-binding)）与期货手续费参数、模拟交易、自定义指标注册表、用户偏好与前端配置方案、平台与运维端点等仍未暴露；分析类结果通常耗时较久（等待与超时规则见 [`docs/connection.md`](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md)），组合对比只提供一套组级口径。统一 `resource` 接受可访问产品/组/单元 ID 或名称；各操作的资源范围不同，多匹配必须消歧，不会向产品组广播写入。
+- 从仓库 editable 安装：`git pull` 后重跑 `python -m pip install -e .`；依赖有变化时也必须重装。
+- 从包索引安装：`python -m pip install --upgrade rqams-harness`。
+- 同版本覆盖发布后，普通 `--upgrade` 不会替换已安装包；在已配置内网索引的环境中运行 `python -m pip install --no-cache-dir --force-reinstall --no-deps rqams-harness==0.0.1`。
+- 更新后运行 `rqamsh schema`，确认当前操作和参数。
 
-- `create` 创建业务对象；`upload` 向既有对象导入数据；`update` 修改记录；`replace_fairvalues` 明确全量替换。
-- CLI成功JSON仅stdout，错误JSON在stderr且非零退出；Python抛 HarnessError。返回保持服务端原始结构，不静默拆包；各操作实际返回的数据结构在各业务页的返回字段表中列出（表头与路径写法见 [`docs/connection.md`](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#return-fields)）。
-- 调用会按需等待服务端算完：默认单请求60秒、总等待300秒、间隔1秒（`--timeout`/`--wait-timeout`/`--poll-interval`）；等待超时不代表服务端取消或失败，写请求不会盲目重放。
-- 文件导入可能按日期/账户覆盖旧数据；结构化流水非空foreign_id按产品upsert。部分失败可能已写入合法项，异常保留完整结果。
-- 下载必须指定新输出文件，不覆盖已有文件。
-- **未暴露能力不等于阻塞**：模糊检索与打分、区间差分、加权贡献、报告渲染（Markdown/DOCX/PNG）、序列拼接、定时推送、写入前预览与幂等键属于调用方（Agent）职责；企业微信、邮件这类第三方通道的对接由对端官方接口决定，本项目不封装也不测试。两者都不算本项目缺口，真正的缺口只有两类：**取不到的数据**（服务端未持久化的配置版本/审批元数据、需服务端规则引擎的判定）与**外部凭证或公网入口**。边界判据见[必要边界](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md#必要边界)；客户端契约测试、只读联调配方与实测量级见 [`tests/README.md`](https://github.com/ricequant/rqams-harness/blob/main/tests/README.md)。
+**文档：**
 
-**安全：**本版不代办登录，也不接收账号密码。请向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie；从文件读到的地址与 `sid` 允许带行尾回车，客户端建连时会去掉首尾空白与回车换行）；工作空间默认使用可见空间中的第一个，需要时再切换，见[工作空间](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md#默认工作空间与切换)。即使地址是本机，也可能操作正式业务数据；上传、修改、删除、重算前必须确认目标与授权，客户端资源筛选不能替代服务端授权。
+- 本地克隆：切到 `dev` 后运行 `git pull --ff-only`，不要继续读旧副本。
+- 直接读 GitHub：本次内网发布对应 `dev` 分支，重新获取该分支的 raw 页面。
+- wheel 不含 `docs/`；需要文档时使用仓库或 sdist。学习案例、脚本及必要材料统一放在 `docs/demo/`，获取完整 `docs/` 才能保留树内相对链接；只复制单页不会自动带上它引用的页面和附件。
+- 文档与安装版本不一致时，以 `rqamsh schema` 为准；版本级变化见 [CHANGELOG.md](https://github.com/ricequant/rqams-harness/blob/dev/CHANGELOG.md)。
 
-## 从用户需求选择能力
+## Agent Skill
 
-|用户需求|AMS 业务路径|结果核对|
-|---|---|---|
-|“把这只基金纳入管理”|先用 `products.list/get` 确认是否已有产品；没有时按数据源创建产品并配置账户|核对产品 ID、数据源、起始日、账户和基准，不能把创建成功当作已有估值|
-|“导入今天成交，更新持仓”|确认交易源产品和账户 → `trades.upload` → `products.compute_state` → `balances.get` 读取同日头寸报表及其中的头寸|检查逐项导入结果、估值状态、业务日期、数量与权益；部分失败不代表全批回滚|
-|“按托管估值表对账”|确认估值报告或混合数据源产品 → `valuation_reports.upload/list` → `products.compute_state` → `reconciliation.list/diff` 查缺件与差异 → `balances.get`|确认同日替换范围和估值表覆盖配置，再比较报告日期、净资产、净值和头寸；采用或撤销自动对账用 `reconciliation.auto/undo_auto`，并按读回结果核对|
-|“这段时间赚了多少、承担多大风险”|确认产品/组、区间、基准和日历 → `analytics.indicators`；画净值曲线用 `analytics.series`|区分金额与收益率，披露数据缺失及指标口径；不要把空结果解释为零收益|
-|“合并查看几只产品”|用 `product_groups` 管理成员；用组查询 `balances.get` 读取历史或实时头寸报表及成员权重视图，用 `analytics` 查询指标与净值收益序列|核对成员、权重、日期和实时结算状态；向组查询不等于向所有成员写入|
-|“按自己的分组标注产品”|用 `tags.list` 读现有标签 → `tags.upsert` 建/改标签并整体覆盖绑定；不再需要时 `tags.delete` 按 ID 删除|标签是调用方私有的组织信息，只影响标签与绑定关系|
-|“维护场外资产或账户内子组合”|场外标的及价格用 `custom_instruments`；产品内资产单元用 `asset_units`，其持仓单用 `positions_statements`|区分标的记录 ID、证券代码和资产单元 ID；价格替换与持仓单覆盖前确认范围|
+技能族位于 [ricequant-skills](https://github.com/ricequant/ricequant-skills) 的 `skills/basic/rqams` 下。它只做入口导航和判断规则，不复制文档；参数、返回和业务口径仍以本仓库 `docs/` 与 `rqamsh schema` 为准。更新技能时重新获取技能族并覆盖本地副本；已安装的技能副本不会自动跟随远端。技能、包和文档分别更新，本包版本变化只记录在 `CHANGELOG.md`，不再在文档里维护历史兼容说明。
 
-### Agent 执行顺序
+向导入口先读业务翻译指南的首次使用与目标拆解；估值、实时、批量和分析任务还要读取任务完成条件，缺项或运行态进入等待诊断，写入前读取计划卡与目标操作规则。Skill 中的必读触发条件不替代这些业务权威页。发布或更新时分别同步技能、包与文档；只修改本地文档不会自动改变其他用户安装的技能或在线读取的内容。
 
-1. 明确用户目标、产品/组/单元、日期或区间，以及交付形式（解释、JSON 或导出文件）。缺少影响业务结果的信息时先询问用户。
-2. 从当前身份可访问资源中匹配唯一目标；同名时用 ID 消歧。查询详情，确认数据源、账户、基准、日历和权限符合需求。
-3. 先读后写。导入、覆盖、删除和重算前说明目标与影响范围；只有用户授权后才执行，不能为了让查询成功而擅自修改历史数据。
-4. 检查逐项结果与最终状态。超时只表示停止等待，不代表任务取消；先确认原请求结果，再决定是否重试。
-5. 按同一日期与口径读回结果。回答中注明资源、区间、关键指标及未完成/缺失项，而不是只报告“API 调用成功”。
+## 文档入口
 
-## 文档
+- [核心学习案例](docs/demo/README.md)：用流水、估值表导入、对账与收益异常定位的具体材料，演示指南规则如何改变判断和操作；不是全量功能目录或执行台账。
+- [AMS 业务与 API 使用指南](https://github.com/ricequant/rqams-harness/blob/dev/docs/index.md)：业务主线、业务块导航、常见场景、口径速查和必要边界。
+- [Agent 业务翻译指南](https://github.com/ricequant/rqams-harness/blob/dev/docs/guide.md)：跨任务通用规则，统一对象与动作消歧、范围和时间判断、授权计划、完成条件及结果与错误翻译；完整推演见学习案例。
+- [连接、身份、错误与等待](https://github.com/ricequant/rqams-harness/blob/dev/docs/connection.md)：认证、工作空间、调用约定、返回结构、任务等待和错误处理。
+- [测试与联调](https://github.com/ricequant/rqams-harness/blob/dev/tests/README.md)：契约测试范围、只读联调配方和实测量级。
+- [变更记录](https://github.com/ricequant/rqams-harness/blob/dev/CHANGELOG.md)：按版本记录用户可见改动。
 
-从[AMS 业务与 API 使用指南](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md)开始：先理解 AMS 的输入、估值与输出，再了解 Harness 的公开能力，按场景选择 API 步骤和完成条件。各业务页提供完整参数/默认值、返回和副作用、Python/CLI 示例；字段字典展开嵌套结构。三类能力的划分与判定口径见[金律](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md#金律三类能力拼装本项目只做第三点)与[必要边界](https://github.com/ricequant/rqams-harness/blob/main/docs/index.md#必要边界)；客户端契约测试、只读联调配方与实测量级见 [`tests/README.md`](https://github.com/ricequant/rqams-harness/blob/main/tests/README.md)。尤其先读：
-
-- [连接、身份、等待与错误](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md)
-- [工作空间是什么](https://github.com/ricequant/rqams-harness/blob/main/docs/connection.md#workspace)：工作空间是服务端数据分区，`workspace_id` 只选择请求分区，不是登录凭证
-- [工作空间列举与切换](https://github.com/ricequant/rqams-harness/blob/main/docs/workspaces.md)：列举当前身份可见的空间，并在会话内切换请求分区；需要与业务接口相同的认证入口
-- [标签：产品与产品组的分组标注](https://github.com/ricequant/rqams-harness/blob/main/docs/tags.md)
-- [头寸报表：单一 get 与历史时序](https://github.com/ricequant/rqams-harness/blob/main/docs/balances.md)
-- [交易流水：结构化upsert与文件覆盖](https://github.com/ricequant/rqams-harness/blob/main/docs/trades.md)
-- [估值报告：同日覆盖白名单](https://github.com/ricequant/rqams-harness/blob/main/docs/valuation_reports.md)
-- [对账：状态、差异、人工标记与估值表覆盖](https://github.com/ricequant/rqams-harness/blob/main/docs/reconciliation.md)
-- [指标计算口径、年化、日历和缺失边界](https://github.com/ricequant/rqams-harness/blob/main/docs/analytics/metrics.md#indicators-returns)
-
-所有示例均需替换为用户获授权的身份和目标。字段、结果形状及限制见对应业务页；文档示例不是对任意环境的数据写入授权。
+具体 API 的参数、默认值和返回结构在对应业务页的单个 `##` 操作；字段口径查 `docs/fields/`。
 
 ## 许可
 
@@ -117,4 +71,4 @@ rqamsh --base-url http://127.0.0.1:21015 --cookie sid=<令牌> products list
 - **非商业用途**（个人出于非商业目的，或高校、研究所等非营利机构出于教育、科研目的）：遵守 [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0)；本软件分发时需保持当前许可“原样”不变，且不得附加任何条件。
 - **商业用途**（个人出于任何商业目的，或法人及其他组织出于任何目的）：须先获得米筐科技授权，并在此前提下同样遵守 Apache 2.0 许可；两者冲突之处以当前许可为准。
 
-完整条款见仓库根目录的 [LICENSE](https://github.com/ricequant/rqams-harness/blob/main/LICENSE)，授权流程请联系 public@ricequant.com。
+完整条款见仓库根目录的 [LICENSE](https://github.com/ricequant/rqams-harness/blob/dev/LICENSE)，授权流程请联系 public@ricequant.com。

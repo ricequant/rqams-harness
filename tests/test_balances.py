@@ -13,7 +13,7 @@ from rqamsh.errors import HarnessError
 @pytest.fixture
 def balance_client(monkeypatch):
     """模拟服务端按日期分流，避免固定响应掩盖夜盘错误。"""
-    client = Client("http://localhost:9999", "012345678901234567890123", cookies={"sid": "test"})
+    client = Client("http://localhost:9999", "012345678901234567890123", token="test")
     today = datetime.now(timezone(timedelta(hours=8))).date()
     state = {"period": "valuation_day", "kind": "product", "calls": []}
 

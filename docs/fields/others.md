@@ -14,7 +14,7 @@ JSON 中传值本身，例如 `"trade"`、`"long"`，不要传标题名称或中
 
 ### 类现金、非类现金与 `cash` 指标
 
-类现金在科目调整时按该 `asset_class`、`CNY`、`long` 建或取存款类持仓后调整，且不参与逐仓盈亏累计（其盈亏走下面的现金盈亏调整）。报告输入校验中，非类现金必须提供 `cost_price` 和 `quantity`；类现金不触发这两项“非类现金必填”校验。
+类现金在科目调整时按该 `asset_class`、`CNY`、`long` 建或取存款类持仓后调整，且不参与逐仓盈亏累计（其盈亏走下面的现金盈亏调整）。报告输入校验中，非类现金必须提供 `cost_price` 和 `quantity`；类现金不触发这两项“非类现金必填”校验。三级估值表的虚拟汇总行是这两类之外的第三类：金额直接取报告的科目市值，不要求成本价与数量（见下方 `virtual_*` 说明）。
 
 `cash` 是单独累计的指标：只累计下表备注标注「计入 `cash` 指标」的 `asset_class` 的 `market_value`。不要以名称或会计分类推断它的成员——`money_market_fund` 计入 `cash` 但属于非类现金；部分应收、应付和负债虽属类现金，却不计入 `cash`。
 
@@ -54,6 +54,22 @@ JSON 中传值本身，例如 `"trade"`、`"long"`，不要传标题名称或中
 |`subscription_receivable`|应收申购款|是|计入 `cash` 指标。|
 |`other_receivable`|其他应收款|是|计入 `cash` 指标。|
 |`other_asset`|其他资产|是|计入 `cash` 指标。|
+|`virtual_stock`|估值表汇总-股票|--|三级估值表汇总科目，不是可交易证券；不计入 `cash` 指标。|
+|`virtual_stock_liability`|估值表汇总-股票负债|--|同上；负债方向的汇总行。|
+|`virtual_convertible_bond`|估值表汇总-可转债|--|三级估值表汇总科目，不是可交易证券；不计入 `cash` 指标。|
+|`virtual_convertible_bond_liability`|估值表汇总-可转债负债|--|同上；负债方向的汇总行。|
+|`virtual_bond`|估值表汇总-债券|--|三级估值表汇总科目，不是可交易证券；不计入 `cash` 指标。|
+|`virtual_bond_liability`|估值表汇总-债券负债|--|同上；负债方向的汇总行。|
+|`virtual_fund`|估值表汇总-基金|--|三级估值表汇总科目，不是可交易证券；不计入 `cash` 指标。|
+|`virtual_fund_liability`|估值表汇总-基金负债|--|同上；负债方向的汇总行。|
+|`virtual_option`|估值表汇总-期权|--|三级估值表汇总科目，不是可交易证券；不计入 `cash` 指标。|
+|`virtual_option_liability`|估值表汇总-期权负债|--|同上；负债方向的汇总行。|
+|`virtual_cash`|估值表汇总-现金|--|三级估值表汇总科目，不是活期可用资金，也不是可交易证券；不计入 `cash` 指标。|
+|`virtual_cash_liability`|估值表汇总-现金负债|--|同上；负债方向的汇总行。|
+|`virtual_receivable`|估值表汇总-应收|--|三级估值表汇总科目；不计入 `cash` 指标。|
+|`virtual_payable`|估值表汇总-应付|--|三级估值表汇总科目；不计入 `cash` 指标。|
+|`virtual_other_asset`|估值表汇总-其他资产|--|三级估值表汇总科目；不计入 `cash` 指标。|
+|`virtual_other_liability`|估值表汇总-其他负债|--|三级估值表汇总科目；不计入 `cash` 指标。|
 |`cash_debt`|现金类负债|是|不计入 `cash` 指标。|
 |`other_interest_payable`|其他应付利息|是|不计入 `cash` 指标。|
 |`management_fee_payable`|计提管理费|是|不计入 `cash` 指标。|
@@ -64,6 +80,8 @@ JSON 中传值本身，例如 `"trade"`、`"long"`，不要传标题名称或中
 |`tax_payable`|应付税|是|不计入 `cash` 指标。|
 |`other_payable`|其他应付款|是|不计入 `cash` 指标。|
 |`other_liability`|其他负债|是|不计入 `cash` 指标。|
+
+`virtual_*` 是三级估值表按会计科目汇总出的非交易记录：一行的金额直接取报告的科目市值，正数计入资产、负数计入负债，不经过价格×数量，也不参与交易、行情更新、逐仓盈亏与行业分类。它们既不是类现金，也不计入 `cash` 指标；报告输入、估值计算与展示口径见[三级估值表与虚拟汇总持仓](balances.md#level3-virtual-positions)。
 
 <a id="tradingassetclass"></a>
 
@@ -76,19 +94,21 @@ JSON 中传值本身，例如 `"trade"`、`"long"`，不要传标题名称或中
 
 |交易资产属性（英文值）|中文名|归入的 `asset_class`|备注|
 |---|---|---|---|
-|`stock`|股票|`stock`|—|
-|`convertible`|可转债|`convertible_bond`|—|
-|`bond`|债券|`bond`|—|
+|`stock`|股票|`stock`、`virtual_stock`、`virtual_stock_liability`|`virtual_*` 为估值表汇总行，归入本属性|
+|`convertible`|可转债|`convertible_bond`、`virtual_convertible_bond`、`virtual_convertible_bond_liability`|同上|
+|`bond`|债券|`bond`、`virtual_bond`、`virtual_bond_liability`|同上|
 |`repo`|回购|`repo`、`reverse_repo`|正回购与逆回购合并为一个属性，不区分方向|
-|`fund`|基金|`closed_end_fund`、`open_end_fund`、`etf_fund`、`lof_fund`、`reits`、`other_fund`、`money_market_fund`|货币基金归本属性；头寸指标 `cash` 把货币基金计入现金类，两者口径不同|
+|`fund`|基金|`closed_end_fund`、`open_end_fund`、`etf_fund`、`lof_fund`、`reits`、`other_fund`、`money_market_fund`、`virtual_fund`、`virtual_fund_liability`|货币基金归本属性；头寸指标 `cash` 把货币基金计入现金类，两者口径不同；`virtual_*` 为估值表汇总行|
 |`futures`|期货|`commodity_futures`、`stock_index_futures`、`interest_rate_futures`、`otc_futures`|—|
-|`option`|期权|`commodity_option`、`stock_index_option`、`otc_option`|—|
+|`option`|期权|`commodity_option`、`stock_index_option`、`otc_option`、`virtual_option`、`virtual_option_liability`|`virtual_*` 为估值表汇总行|
 |`total_return_swap`|收益互换|`total_return_swap`|—|
 |`interest_return_swap`|利率互换|`interest_return_swap`|—|
-|`cash`|现金|`current_deposit`、`reservation_deposit`、`refundable_deposit`、`securities_settlement_accounts`|只有这 4 个存款与清算科目，不含货币基金，也不含应收应付与负债科目|
+|`cash`|现金|`current_deposit`、`reservation_deposit`、`refundable_deposit`、`securities_settlement_accounts`、`virtual_cash`、`virtual_cash_liability`、`virtual_receivable`、`virtual_payable`、`virtual_other_asset`、`virtual_other_liability`|前 4 个存款与清算科目不含货币基金，也不含应收应付与负债科目；后 6 个 `virtual_*` 是三级估值表汇总行|
 |`other_derivatives`|其他衍生品|—|预留值：当前没有任何 `asset_class` 归入本属性，不会出现在上述返回里|
 
 不在「归入的 `asset_class`」列里的持仓——回购应计利息、应收应付、计提费用与负债科目、资产单元等——按下列口径处理：`group_allocation` 与 `asset_weight` 的 `trading_asset_class_weight_series` 直接跳过，既不进分子也不进键名；`asset_weight` 的 `trading_asset_class` 分类只跳过未归并的持仓（「现金」属性保留）；`trading_analysis` 不按本表过滤，未归并的资产类别照常成组，其 `asset_category` 取固定文案「其他资产」。
+
+`virtual_*` 汇总行按上表归入交易资产属性，因此在资产配置与权重序列里保留其金额影响：它们的二级分组取该虚拟类别的中文名（如「估值表汇总-股票」），不再按行情板块或基金类型细分。单日 `balances.get` 的格式化明细隐藏这些汇总行，历史 `balances.series` 则可能保留；两者的分类汇总和明细边界见[三级估值表与虚拟汇总持仓](balances.md#level3-virtual-positions)。
 
 <a id="cash-pnl-adjustment"></a>
 

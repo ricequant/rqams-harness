@@ -48,10 +48,22 @@ class Products(_Resource):
         Args:
             data: 产品 JSON；必含 data_source、name、investment_category、
                 strategy_category、benchmark、calendar，其他必填字段依数据源而定。
+                省略 report_name 时用 name 补齐；trade 与 trade_and_valuation_report 数据源
+                省略 unit_policy 时补 auto_prev_unit_net_value；混合数据源省略 auto_overwrite
+                时显式传 false。显式 unit_policy（含 None、非法值）交由服务端判定，账户不补造。
         Returns:
             原始 product_id、err_msgs 等创建结果，不修改输入对象。
         """
-        result = self._client.call("POST", "products", json=data)
+        payload = dict(data)
+        if not payload.get("report_name") and payload.get("name"):
+            payload["report_name"] = payload["name"]
+        if payload.get("data_source") in {"trade", "trade_and_valuation_report"}:
+            # 两类交易源都要求份额策略；只在键缺席时补安全默认，显式 manual/None/非法值不覆盖。
+            payload.setdefault("unit_policy", "auto_prev_unit_net_value")
+        if payload.get("data_source") == "trade_and_valuation_report" and "auto_overwrite" not in payload:
+            # 自动覆盖会把已保存报告写成估值表覆盖，默认必须是确定的 false，不能留空由服务端猜。
+            payload["auto_overwrite"] = False
+        result = self._client.call("POST", "products", json=payload)
         self._client.partial_failure(result)
         return result
 

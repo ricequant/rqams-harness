@@ -1,0 +1,16 @@
+{
+  "name": "harness-valuation-example",
+  "report_name": "harness-valuation-example",
+  "description": "构造型教学产品：用于估值表导入与核对；只在明确授权的演示空间创建。",
+  "data_source": "valuation_report",
+  "label": "paper",
+  "start_date": "2026-10-26",
+  "trading_start_date": "2026-10-26",
+  "calendar": "exchange",
+  "benchmark": {
+    "type": "index",
+    "id": "000300.XSHG"
+  },
+  "investment_category": "equity",
+  "strategy_category": "stock_long"
+}

@@ -4,16 +4,6 @@
 
 条款是需要维护的业务配置：录入错误的条件会持续产生或漏掉预警，因此写入前先确认目标产品/产品组、指标、比较方式、阈值、执行频率，以及 3 级及以上所需的 Webhook 地址。看板数据是外部行情与统计的只读镜像，不含调用方产品的估值口径，也不能用来替代[头寸报表](balances.md)、[净值与收益指标](analytics/metrics.md#indicators-returns)或[持仓分析](analytics/holdings_analysis.md#asset_weight)。
 
-## 从用户需求到操作
-
-|用户需求|API 与输入准备|完成条件|
-|---|---|---|
-|查看现有预警条款|`clauses`，按产品/产品组、日期区间或等级过滤|返回条款清单；每条带 `err_msg` 说明目标产品是否已到期/删除、产品组是否已删除或异常|
-|新增预警条款|`create_clauses`，整批提交并逐项自检|整批成功才返回；任一项非法则整批失败，且不留下半批条款|
-|修改或删除条款|`update_clause` 局部更新；`delete_clauses` 按 ID 批量删除|更新作用于单个条款 ID 且内容非空；删除按 ID 计数，删除后条款不再产生预警|
-|查看当前实时预警|`realtime_warnings`|返回当前用户与工作空间的预警消息与关联条款、资源 ID；无需再取产品目录|
-|查看全市场违规公告标的|`illegal_announcements`|任务终态返回标的代码列表；该结果不按产品过滤，是所有非 ST 标的中标题含违规/违法公告的对象|
-|看两融、VIX、ETF 份额与折溢价、商誉占比|`margin_balance`、`vix`、`etf_shares`、`etf_premium_rate`、`goodwill_ratio`|返回服务端缓存的市场数据序列；日度历史必须显式给日期区间|
 
 监控数据是行情与统计镜像，不写入产品数据；查询本身不改变条款或预警状态。
 
@@ -25,7 +15,9 @@ Python 与 CLI 完成相同调用，连接与公共错误处理见[连接说明]
 - 条款过滤参数 `product_ids`、`group_ids` 传名称或 ID，Harness 解析为 ID 后下发，重复项去重。
 - 条款等级过滤的下发参数名是单数 `level`，值为逗号串；`levels=[1,3]` 对应 `level=1,3`。
 - `vix` 与 `etf_premium_rate` 的 `fields` 决定查询形态：`minbar` 为当日分时，`daily` 为日度历史；含 `daily` 时必须同时给 `start_date` 与 `end_date`，否则服务端会因空日期直接失败，Harness 因此在本地拒绝。
-- `illegal_announcements` 为任务型接口，客户端在同一路由等待到终态（`legacy_task=True`）。等待与超时规则见[连接说明](connection.md)。
+- `illegal_announcements` 为任务型接口，客户端在同一操作等待到终态（`legacy_task=True`）。等待与超时规则见[连接说明](connection.md)。
+
+实时风险判断依赖当前可用快照。三级估值表的虚拟汇总行（见[资产品种与会计科目](fields/others.md#assetclass)）只表示科目金额，不是证券明细，不进入持仓级条款。需要从持仓计算的应付或现金比例也会排除这些汇总行；缺少真实持仓时返回不可评估诊断，而不是补零。产品级净值、收益率等条款使用快照实际提供的顶层字段。没有持仓级命中消息不等于已完成逐券风险核验，需先确认快照具备该条款所需的真实明细。
 
 ## clauses
 按条件查询风险预警条款。
@@ -82,6 +74,41 @@ Python 签名：`rqamsh.risk_monitor.create_clauses(clauses: list[dict[str, Any]
 - 市值权重、持仓数量权重类指标不能使用「小于」「小于等于」比较方式。
 - `level` 为 3 及以上时必须提供 `warning_urls`（Webhook 地址数组）。
 
+比较方式必须使用服务端枚举，不能把符号、中文和枚举值当成可互换输入：
+
+|`operation`|含义|
+|---|---|
+|`lt`|小于|
+|`lte`|小于等于|
+|`gt`|大于|
+|`gte`|大于等于|
+
+`>`、`大于`、`GT` 都不是合法枚举值，Harness 会在本地拒绝，不会先发请求再等服务端返回 400。
+
+指标大类与单位净值的常用组合：
+
+|字段|取值|含义|
+|---|---|---|
+|`indicator_type`|`product`|产品（或产品组）级指标|
+|`indicator_type`|`position`|持仓级指标|
+|`indicator`|`unit_net_value`|单位净值|
+
+“单位净值大于 1、二级预警、每小时检查”的完整例子：
+
+```json
+{
+  "level": 2,
+  "indicator_type": "product",
+  "indicator": "unit_net_value",
+  "operation": "gt",
+  "value": 1,
+  "crontab_expression": "0 * * * *",
+  "target_ids": {"products": ["<产品ID>"]}
+}
+```
+
+`crontab_expression` 是标准 5 段 cron，服务端按 `Asia/Shanghai` 解释；`0 * * * *` 表示每小时整点。`target_ids.products` 应使用产品 ID，不要用产品名代替。
+
 返回：服务端原始响应，含 `inserted_count`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
@@ -90,7 +117,7 @@ Python 签名：`rqamsh.risk_monitor.create_clauses(clauses: list[dict[str, Any]
 
 ## update_clause
 局部更新单个条款。
-- update_clause：只提交需要变更的字段，服务端把更新后的完整条款重新校验；内容为空时不产生任何变更，因此本地拒绝空对象。
+- update_clause：只提交需要变更的字段，服务端把更新后的完整条款重新校验；内容为空时不产生任何变更，因此本地拒绝空对象。提交 `operation`、`indicator_type` 或 `indicator` 时同样按上述枚举在本地校验。
 
 Python 签名：`rqamsh.risk_monitor.update_clause(clause_id: str, data: dict[str, Any])`。
 
@@ -131,15 +158,27 @@ Python 签名：`rqamsh.risk_monitor.realtime_warnings()`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`warning_msgs`|预警消息|object|—|键为按消息内容去重后的摘要，值为消息对象：`datetime`、`next_run_time`（服务端时间字符串）、`warning_urls`、`type`（`warning` 或 `error`）、`message`、可选 `position`|由数据决定；只收 2 级及以上条款的命中消息，没有命中时整个键不出现；消息对象不含产品或产品组名称|
-|`warning_clause_ids`|命中条款 ID|array（string 元素）|—|产生这些预警的条款 ID|由数据决定；没有命中时整个键不出现|
-|`warning_resource_ids`|按资源分组的消息|object|—|键为资源 ID（产品或产品组，也含系统级资源），值为该资源命中消息的数组，元素与 `warning_msgs` 的值同构|由数据决定；没有命中时整个键不出现|
+|`warning_msgs`|预警消息|object|—|按消息键组织的预警与诊断，元素见下列消息字段|由数据决定；只收 2 级及以上条款的消息，没有消息时整个键不出现|
+|<a id="warning-message"></a>`warning_msgs.{消息键}`|单条消息|object|—|预警或不可评估诊断|由数据决定；动态消息键不是资源 ID|
+|`warning_msgs.{消息键}.datetime`|消息时间|string|服务端时间字符串|本次消息生成时间|随父级返回|
+|`warning_msgs.{消息键}.next_run_time`|下次运行时间|string|服务端时间字符串|该条款下一次计划评估时间|随父级返回；不保证届时已取得完整输入|
+|`warning_msgs.{消息键}.warning_urls`|通知地址|array（string 元素） / null|—|条款配置的通知地址|随父级返回；无通知地址时可为 `[]` 或 `null`，不做本地归一|
+|`warning_msgs.{消息键}.type`|消息类型|string|—|服务端消息标签，取 `warning` 或 `error`|随父级返回；不能仅凭此标签区分阈值命中与不可评估，须结合正文及诊断原因|
+|`warning_msgs.{消息键}.message`|消息正文|string|—|风险命中或输入不可评估的说明|由数据决定|
+|`warning_msgs.{消息键}.position`|相关持仓|string|—|消息涉及的真实持仓标识|由数据决定；产品级消息或无持仓明细时可省略|
+|`warning_msgs.{消息键}.products_name`|产品或系统名称|string|—|产品条款的资源名称，系统授权消息也可使用此键|由数据决定；不是产品 ID|
+|`warning_msgs.{消息键}.product_groups_name`|产品组名称|string|—|产品组条款的资源名称|由数据决定；不是产品组 ID|
+|`warning_msgs.{消息键}.workspace_name`|工作空间名称|string|—|系统授权消息涉及的工作空间名称|由数据决定|
+|`warning_msgs.{消息键}.unavailable_reasons`|不可评估原因|array（string 元素）|—|该次评估缺少必要输入的原因；缺少真实证券明细时可为 `SECURITY_DETAIL_UNAVAILABLE`|由数据决定；应保留诊断，不把缺明细解释为零风险|
+|`warning_clause_ids`|关联条款 ID|array（string 元素）|—|产生这些预警或诊断的条款 ID|由数据决定；没有消息时整个键不出现|
+|`warning_resource_ids`|按资源分组的消息|object|—|键为资源 ID（产品或产品组，也含系统级资源），值为该资源的消息数组，元素与 `warning_msgs` 的值同构|由数据决定；没有消息时整个键不出现|
+|`warning_resource_ids.{资源ID}`|资源消息数组|array（object 元素）|—|同一资源的消息，元素字段见[单条消息](#warning-message)|由数据决定；也可能包含未进入 `warning_msgs` 的低等级条款消息|
 
-键仅在确有命中时出现，缺键不等于「无风险」。消息对象只给预警消息、条款 ID 与资源 ID，不含产品或产品组名称；需要名称时由调用方按 `warning_clause_ids` 与资源 ID 自行解析，且不替代逐条持仓核对。
+键仅在确有消息时出现，缺键不等于「无风险」。名称字段用于展示，资源与条款仍按 ID 对应；正文说明不可评估或带有 `unavailable_reasons` 时，应先解释输入缺口，不能把不可评估当作条款未触发。消息读取不替代逐条持仓核对。
 
 ## illegal_announcements
 读取全市场违规公告标的列表。结果按服务端缓存口径给出与调用方持仓无关的全市场代码。
-- illegal_announcements：首次调用触发服务端任务，Harness 在同一路由重复读取直到终态。
+- illegal_announcements：首次调用触发服务端任务，Harness 在同一操作重复读取直到终态。
 
 Python 签名：`rqamsh.risk_monitor.illegal_announcements()`。
 

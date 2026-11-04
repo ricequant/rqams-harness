@@ -103,6 +103,8 @@ class Balances(_Resource):
         Returns:
             完整报表或所选顶层字段；成员视图与批量查询为 ID 到报表的映射。
             保留服务端返回的业务日期、null、缺字段与任务包装，不把缺失补成零。
+            daily_returns 是收益率；unit_net_value 是单位净值，其环比不是收益率，
+            不能用它替代 daily_returns。收益与净值的公式见头寸字段字典。
             实时归属日由服务端监控周期决定，夜盘不一定等于请求当天。
             实时分支即实时头寸明细口径：省略日期且 show_futures_sterilisation=False 时
             服务端直接读取实时快照，返回完整截面（含 share_values 与应付份额子持仓），

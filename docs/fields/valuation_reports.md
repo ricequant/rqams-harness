@@ -24,6 +24,7 @@
 |`product_id`|归属产品 ID|string|字符串 ID|归属产品 ID|由目标 resource 确定|
 |`acc_unit_net_value`|累计单位净值|number / null|每单位份额金额/净值|按产品累计净值口径计算|—|
 |`id`|记录 ID|string / null|字符串 ID|服务端记录 ID|只读|
+|`level3`|三级估值表标识|boolean / null|—|该报告是否为科目只列到第三层、没有逐证券明细的三级估值表|不表示持仓含逐证券明细；级别声明与上传规则见[上传估值报告](../valuation_reports.md#upload)|
 |`share_values`|分类份额估值|object（string 键 → object） / null|—|分类份额估值，键为分类份额名称；<br>&emsp;展开见 [分类份额估值](balances.md#productsharevalue)|—|
 
 <a id="valuationreportposition"></a>
@@ -96,7 +97,7 @@
 
 ## 估值报告文件信息
 
-报告文件元数据。下表字段均为列表返回键，不是需要发送的 JSON 外层键；列表通常只返回 `date`、`file_name`、`valuation_report_id`、`source`。其他字段是否提供以实际结果为准。
+报告文件元数据。下表字段均为列表返回键，不是需要发送的 JSON 外层键；列表通常只返回 `date`、`file_name`、`valuation_report_id`、`source`、`valuation_level`。其他字段是否提供以实际结果为准。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
@@ -107,6 +108,7 @@
 |`file_name`|原上传文件名|string|—|原上传文件名|只读元数据；以实际返回字段为准|
 |`hash`|文件内容标识|string|—|上传文件内容标识|只读元数据；以实际返回字段为准|
 |`source`|来源|string（枚举）|—|流水或估值报告来源；枚举[估值报告来源](#valuationreportsource)|只读元数据；以实际返回字段为准|
+|`valuation_level`|估值表级别|integer|`3` 或 `4`|该报告按三级还是四级估值表解析|只读元数据；`3` 表示无逐证券明细的三级报告；缺该字段的历史记录按 `4` 处理|
 |`id`|记录 ID|string / null|字符串 ID|服务端记录 ID|只读元数据；以实际返回字段为准|
 
 ## 枚举取值

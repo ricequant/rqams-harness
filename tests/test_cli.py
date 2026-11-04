@@ -26,7 +26,7 @@ def test_cli_json_input_partial_failure_preserves_successes(service, tmp_path):
     source = tmp_path / "流水.json"
     source.write_text('[{"foreign_id": "one"}, {"foreign_id": "two"}]', encoding="utf-8")
     result = subprocess.run([
-        sys.executable, "-m", "rqamsh", "--base-url", client.base_url, "--cookie", "sid=test",
+        sys.executable, "-m", "rqamsh", "--base-url", client.base_url, "--token", "test",
         "--workspace-id", client.workspace_id, "trades", "upload", "--resource", "量化一号",
         "--input", str(source),
     ], capture_output=True, text=True, encoding="utf-8", env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"})
@@ -47,7 +47,7 @@ def test_cli_parses_json_array_for_union_string_parameters(service):
         (200, {"weights": []}),
     ]
     result = subprocess.run([
-        sys.executable, "-m", "rqamsh", "--base-url", client.base_url, "--cookie", "sid=test",
+        sys.executable, "-m", "rqamsh", "--base-url", client.base_url, "--token", "test",
         "--workspace-id", client.workspace_id, "analytics", "asset-weight",
         "--resource", "量化一号", "--start-date", "2026-01-01", "--end-date", "2026-02-01",
         "--classifiers", '["stock","fund"]',

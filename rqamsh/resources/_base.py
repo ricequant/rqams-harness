@@ -46,7 +46,7 @@ class _Resource:
     """保存显式客户端，不持有全局身份或资源缓存。"""
 
     def __init__(self, client: Client) -> None:
-        """初始化资源分组；client 为携带用户和工作空间身份的客户端。"""
+        """初始化资源分组；client 为携带 Bearer 令牌和工作空间身份的客户端。"""
         self._client = client
 
     def _path(self, resource: str, allowed: set[str]) -> str:

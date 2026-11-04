@@ -151,6 +151,85 @@ def test_compute_state_reads_state_without_waiting(service):
     assert len(state["requests"]) == 5
 
 
+def test_create_fills_required_unit_policy_for_trade_sources(service):
+    """交易与混合源省略 unit_policy 时按创建必填字段补自动份额，且不丢弃报告名/自动覆盖默认。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"}), (200, {"product_id": "p2"})]
+    common = {
+        "name": "交易源产品", "start_date": "2026-01-01",
+        "investment_category": "equity", "strategy_category": "stock_long",
+        "benchmark": {"type": "index", "id": "000300.XSHG"}, "calendar": "exchange",
+    }
+    payloads = [
+        {"data_source": "trade", **common},
+        {"data_source": "trade_and_valuation_report", **common},
+    ]
+    originals = [dict(payload) for payload in payloads]
+    expected = [
+        {**common, "data_source": "trade", "report_name": "交易源产品",
+         "unit_policy": "auto_prev_unit_net_value"},
+        {**common, "data_source": "trade_and_valuation_report", "report_name": "交易源产品",
+         "unit_policy": "auto_prev_unit_net_value", "auto_overwrite": False},
+    ]
+    for product_id, payload, want in zip(("p1", "p2"), payloads, expected):
+        assert client.products.create(payload) == {"product_id": product_id}
+        # 精确比对实际 HTTP 请求体：只有补齐后的必填字段和客户端默认，没有账户等虚构配置。
+        assert json.loads(state["requests"][-1][2]) == want
+    assert all("unit_policy" not in payload for payload in payloads)
+    assert payloads == originals
+
+
+def test_create_keeps_explicit_unit_policy_without_mutating_input(service):
+    """显式 manual 不被自动默认覆盖，调用方输入保持原样，份额策略交由服务端判定。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    payload = {
+        "data_source": "trade", "name": "手工份额产品", "start_date": "2026-01-01",
+        "unit_policy": "manual",
+        "investment_category": "equity", "strategy_category": "stock_long",
+        "benchmark": {"type": "index", "id": "000300.XSHG"}, "calendar": "exchange",
+    }
+    original = dict(payload)
+    assert client.products.create(payload) == {"product_id": "p1"}
+    sent = json.loads(state["requests"][-1][2])
+    assert sent["unit_policy"] == "manual"
+    assert sent["report_name"] == "手工份额产品"
+    assert payload == original
+
+
+def test_create_does_not_fill_unit_policy_for_valuation_report_source(service):
+    """纯估值报告源不需要 unit_policy，客户端不能为创建成功越权补造该字段。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    payload = {
+        "data_source": "valuation_report", "name": "估值源产品", "start_date": "2026-01-01",
+        "investment_category": "equity", "strategy_category": "stock_long",
+        "benchmark": {"type": "index", "id": "000300.XSHG"}, "calendar": "exchange",
+    }
+    original = dict(payload)
+    assert client.products.create(payload) == {"product_id": "p1"}
+    sent = json.loads(state["requests"][-1][2])
+    assert "unit_policy" not in sent
+    assert "accounts" not in sent
+    assert sent["report_name"] == "估值源产品"
+    assert payload == original
+
+
+def test_create_surfaces_partial_failure_with_created_product_id(service):
+    """创建返回 err_msgs 时仍以 partial_failure 报错并保留已创建 product_id，避免全量重复创建。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1", "err_msgs": ["估值初始化失败"]})]
+    payload = {
+        "data_source": "trade", "name": "部分失败产品", "start_date": "2026-01-01",
+        "investment_category": "equity", "strategy_category": "stock_long",
+        "benchmark": {"type": "index", "id": "000300.XSHG"}, "calendar": "exchange",
+    }
+    with pytest.raises(HarnessError) as error:
+        client.products.create(payload)
+    assert error.value.code == "partial_failure"
+    assert error.value.details["results"]["product_id"] == "p1"
+
+
 def test_product_group_recompute_posts_group_ids_only(service):
     """产品组重算按组 ID 数组提交，产品选择器必须在写入前被类型检查拒绝。"""
     client, state = service

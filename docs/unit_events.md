@@ -6,19 +6,10 @@
 
 事件字段与来源枚举见[份额事件字段](fields/unit_events.md)。
 
-## 从用户需求到操作
-
-|用户需求|操作顺序|完成条件|
-|---|---|---|
-|查看某产品的手工与自动份额事件|`list` 限定日期|手工项来源为 manual、自动项折叠为 auto；两类都在同一个数组里，按日期倒序|
-|核对某日份额变动与当日份额|`list` 读取 unit_changes 的申购、赎回与 units|当日 units 来自估值结果，与事件份额是两回事；没有估值结果时该字段为空，属依赖估值未产出，见[未就绪与缺输入](connection.md#unready-inputs)|
-|录入一笔或一批手工申购、赎回|准备 JSON，必含 unit_event_type、date、units → `create` → `list` 复核|effect_count 与预期条数一致；服务端不返回新记录 ID，须用 list 取回 ID|
-|更正手工事件的份额|`list` 取得手工事件 ID → `update` 提交两个份额字段 → `list` 复核|该事件的申购或赎回份额已按提交值更新；自动事件 ID 会得到 404|
-|删除误录的手工事件|`list` 确认手工事件 ID → `delete` → 重新查询|effect_count 与所选条数一致；自动事件不受影响，删除不可撤销|
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与事件 ID；写入和删除须获得授权。网关上读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与事件 ID；写入和删除须获得授权。读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
 
 日期为 YYYY-MM-DD，枚举传英文值，取值见[份额事件类型](fields/unit_events.md#uniteventtype)与[份额事件来源](fields/unit_events.md#uniteventsource)。事件日期不能晚于今天，也不能晚于产品到期日；申购与赎回必须且只能提供其中一个；份额产品必须填写 product_share，且该份额需在事件日期有效；估值报告数据源的产品不支持录入份额事件；封账与静态会计保护仍按事件日期判断，但 `create` 走的服务端批量接口不做封账日与起始日校验（见 [create](#create)）。
 

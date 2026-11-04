@@ -34,7 +34,7 @@
 |<a id="productbenchmark"></a>`benchmark`|业绩比较基准|object|—|产品业绩比较基准，供指标比较与基准序列使用；基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)|—|
 |`benchmark.type`|基准种类|string（枚举）|—|基准种类：`index` 指数基准（配合指数代码，[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)可校验）、`customized_index` 自定义基准（配合自定义基准 ID）。枚举[基准类型](#productbenchmarktype)|—|
 |`benchmark.id`|基准标识|string|—|index 时为指数 order_book_id（行情由[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)取），customized_index 时为自定义基准 ID|与 benchmark.type 一致|
-|`calendar`|日历类型|string（枚举）|—|估值日历：`exchange` 交易所日历、`natural` 自然日；决定估值与指标序列的日期集合（指标整理时交易日产品只保留交易所日历，自然日产品保留自然日）；交易所日历的交易日序列见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)。枚举[估值日历](#calendartype)|—|
+|`calendar`|日历类型|string（枚举）|—|用于指标、查询与调仓的日期对齐：`exchange` 沪深交易所日历、`exchange_hkt` 港股通日历、`natural` 自然日。历史头寸链的逐自然日推进另见[估值生命周期](../index.md#valuation-lifecycle)，不能把统计日历理解为跳过非交易日估值。`exchange_hkt` 取沪深交易日与港股交易日的共同开市日，不是任一市场单独的完整日历；按指定市场取价时另按该市场对齐。交易所日期源见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)，取值见[估值日历](#calendartype)|产品组的日历推导与调仓限制见[组日历与计算边界](../product_groups.md#group-calendar)|
 |<a id="productaccount"></a>`accounts`|产品账户列表|array（object 元素）|—|产品嵌套交易/托管账户；无独立全局 ID|—|
 |`accounts[].name`|账户名称|string|—|产品内账户名称；流水 account 引用此值，不参与独立 resource 选择|—|
 |`accounts[].is_custodian`|托管账户标记|boolean|—|是否托管账户|—|
@@ -158,8 +158,11 @@
 
 |值|含义|
 |---|---|
-|`exchange`|交易所日历|
+|`exchange`|A 股（沪深）交易日历|
+|`exchange_hkt`|港股通日历口径：沪深交易日与港股交易日共同开市的日子（两者的交集）|
 |`natural`|自然日|
+
+`exchange_hkt` 与 `exchange` 同属交易日口径，但日期集合更窄：沪深或港股任一休市的日子都不在序列内，不能用它替代单一市场完整日历，也不能仅凭这个交集判断外部通道的全部交易安排。产品组日历由成员推导；权重组的调仓限制见[组日历与计算边界](../product_groups.md#group-calendar)。
 
 <a id="etfvaluationaccordingfield"></a>
 ### ETF 估值价格

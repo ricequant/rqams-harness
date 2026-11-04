@@ -1,6 +1,6 @@
 # AMS 业务与 API 使用指南
 
-## 金律：三类能力拼装，本项目只做第三点
+## 金律：三类能力拼装，rqamsh 提供第三点
 
 `Agent 自身能力 + 第三方能力 + rqamsh 业务数据管理能力 = 满足用户需求`
 
@@ -14,6 +14,7 @@
 
 只有三类都覆盖不到才算真缺口：**取不到的数据**（服务端未持久化的配置版本或审批元数据、需要服务端规则引擎的判定）与**外部凭证或公网入口**。反过来，第三类没有现成封装、第二类没有现成对接，都不是本项目的缺口；而任何「取数 → 加工 → 投递」的需求，取数这一段必须落在本指南的操作上，加工与投递由调用方完成。
 
+<a id="valuation-lifecycle"></a>
 ## 先理解 AMS：围绕产品持续维护头寸链
 
 AMS 围绕产品接收业务输入、进行估值，并持续维护每日头寸、净资产、净值及分析结果。产品不是一张孤立的持仓表：某日的交易、资金和权益事件会影响当日状态，也可能影响后续日期。
@@ -31,88 +32,135 @@ AMS 围绕产品接收业务输入、进行估值，并持续维护每日头寸�
 
 |输入类别|典型业务资料|在头寸链中的作用|
 |---|---|---|
-|变动输入|交易流水、托管事件、份额事件、交割单、模拟交易信号|描述成交、资金、权益或份额变化；能否接入及如何进入估值取决于产品数据源与业务配置|
+|变动输入|交易流水、托管事件、份额事件、交割单|描述成交、资金、权益或份额变化；能否接入及如何进入估值取决于产品数据源与业务配置|
 |截面输入|估值表、持仓单、起始日头寸|提供某日已知状态，用于建立起点、校准或对账；不自动等同于完整估值结果|
 
 估值表可提供某日净资产、份额净值和持仓截面；是否直接采用、校准或以估值表覆盖已有结果，见[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)。持仓单有的只用于数量对账，不含完整资产负债和净值，不能全部替代估值。起始日头寸也必须来自真实业务数据，不能为补齐查询而编造。
 
+### 逐日推进：今天的结果承接之前的状态
+
+产品的估值不是每天互不相关地计算。上一日的持仓、现金、负债和份额状态，是下一日计算的基础；当天处理完交易、事件、费用与估值价格后，形成的新状态又传给后一天。历史头寸链按自然日逐日推进，没有成交的日期也不能直接跳过；这与收益、风险指标统计时采用交易日还是自然日日历是两回事，统计口径见[指标计算口径](analytics/metrics.md#indicators-returns)。
+
+因此，查询某日结果时，可能需要先补齐它依赖的前序估值。例如，所需历史只准备到周二，查询周五时可能要先依次计算周三、周四，再得到周五结果。这里的顺序依赖发生在同一产品的日期链上，不表示所有产品必须排成一条队列计算。
+
+逐日推进也不等于每次从产品成立日重算。已有有效头寸可以作为起点，从其后继续计算；起始日头寸与被采用的估值表、持仓表如何建立或校准状态，仍取决于对应输入规则。
+
+### 历史更正：改过去可能影响后续结果
+
+补录或更正过去某日的交易、事件、价格或估值输入，可能改变当天状态，并沿头寸链影响后续日期。因此，修改成功后不应只核对当天，也不能直接把尚未更新的后续结果交付给用户；应核对本次受影响范围，等待计算并读回目标日期的结果。
+
+影响范围取决于产品数据源、输入采用方式及[封账规则](products.md#set_closing_entry)，不是任何更正都从成立日全量重算；估值表也不是上传后必然覆盖系统结果。
+
+### 按需计算：查询有时也在准备结果
+
+部分结果不是始终提前生成，而是在需要读取时检查是否可用；缺少必要估值时，读取可能触发补算或结果准备，这称为惰性计算。它不是“只有查询才会计算”：写入数据也可能触发计算，具体以各操作说明为准。
+
+已有可用结果会被复用；历史输入被更正、需要补齐前序日期或所需截面尚未产出时，则可能需要重新准备。因此，首次查询、重复查询以及更正数据后的查询，等待时间可能不同，不能仅凭快慢判断结果是否正确或系统是否异常。
+
+含港股头寸的产品还有定时估值刷新：按服务时区，在 A 股交易日 `05:30` 与 `22:30` 提交当日重算，候选产品按前一自然日的港股持仓筛选；不是从前一交易日选取，也不表示重算上一日。到达提交时点不代表结果已完成，仍需核对业务日期与实际结果。这与港股通在途款项的到账和换汇时点不是同一规则，后者见[在途类字段](fields/balances.md#in-transit-fields)。
+
+批量查询还可能先返回已准备好的部分产品。暂未返回不等于没有资产，也不能据此断定每一项都已进入计算队列；缺输入和明确失败不能靠一直等待解决。等待、诊断及停止条件统一见[未就绪与缺输入](connection.md#unready-inputs)。
+
 ### 输出：状态、业绩与核对
 
-AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准比较，进行归因、交易分析、投资概览，并支持对账和周报等工作。它们都依赖输入完整性、日期和计算口径；输入文件已导入不代表后续估值和分析已就绪。
+历史估值、实时截面和分析结果不是同一份产物。实时截面依赖相应的历史头寸基础，再结合盘中变动和实时行情生成；指标、归因还可能需要进一步准备。历史估值正常，不保证所需实时截面已经可读；头寸可读，也不保证所需分析已经完成。
+
+AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准比较，进行归因、交易分析、投资概览，并支持对账和周报等工作。它们都依赖输入完整性、日期和计算口径；输入文件已导入不代表后续估值和分析已就绪。完成用户任务要检查实际所需的产物，而不只是某次调用成功，见[任务完成条件](guide.md#task-readiness)。
+
+## 一条主线：把业务块放回产品生命周期
+
+AMS 的业务不是一组并列模块。它们围绕产品的一条流水线发生；先定位当前阶段，再选操作：
+
+```text
+工作空间
+  → 产品 / 产品组 / 资产单元
+  → 输入：信号 → 流水，估值表、托管/份额事件、持仓单、持仓表、公允价
+  → 计算状态
+  → 头寸 / 净值 / 指标
+  → 对账 / 封账
+  → 分析 / 监控
+        ↑ 差异、缺件、失败项回到输入补齐
+```
+
+|阶段|用户问题|主要业务块/操作|完成标志|
+|---|---|---|---|
+|0 分区|在哪个数据分区做？|`workspaces`|当前身份可见，分区正确|
+|1 定边界|这是产品、产品组，还是产品内的资产单元？|`products`、`product_groups`、`asset_units`|产品的数据源/起始日/账户/基准明确；产品组成员与权重明确；资产单元归属产品明确，目前用于收益互换底层组合|
+|2 进输入|今天有什么变动或截面要进来？|`trades`、`paper_trading`、`valuation_reports`、`custodian_events`、`unit_events`、`positions_statements`、`positions_sheets`、`custom_instruments`|逐项结果无未解释失败；文件、日期、覆盖范围明确|
+|3 等计算|估值算完了吗？|`products.compute_state`（产品）；产品组按组查询等待|产品状态为 `normal` 仅说明计算状态，仍需进入下一阶段读回所需结果；组结果按组读取；运行态不是成功，未就绪按[等待规则](connection.md#unready-inputs)处理|
+|4 读结果|头寸、净值、指标是多少？|`balances`、`analytics`|对象、实际业务日期、来源、所需字段与请求集合逐项核对；未完成项有明确失败原因、缺输入诊断或达到等待上限的记录，不能把部分结果交付成完整结果|
+|5 核对与封账|和托管对得上吗？能封账吗？|`reconciliation`、`products.set_closing_entry/clear_closing_entry`|差异有解释；封账日正确；读回一致|
+|6 分析与监控|为什么涨跌？风险在哪？|`analytics`、`risk_monitor`|区间、基准、模板、口径明确；条款与命中一致|
+|7 协作与组织|谁能看、怎么分组？|`permissions`、`tags`|授权、标签可追溯|
+
+横向支撑不单独占阶段，但影响全链：
+
+- `market_data`：行情、日历、基准，供分析、基准比较与交易判断使用；不直接参与产品估值。
+- `confirmations`：追查导入批次与逐项结果，是审计轨，不是估值步骤。
+
+`workspaces` 是阶段 0 的前提，`permissions` / `tags` 在阶段 7 首次配置但作用贯穿全链；`custom_instruments` 是阶段 2 的定价输入。它们已在阶段表中出现，不再重复列为横切块。
+
+三条使用规则：
+
+1. **先定位阶段，再选操作。** 不知道用户说的是哪一步时，先用这张表定位；不要从操作清单反推业务。
+2. **输入成功、计算就绪、结果可交付是三件事。** 导入成功不代表估值完成；`compute_state` 就绪也不代表头寸已核对。
+3. **写操作不能替代上游补齐。** 对账标记、授权、标签不会替你补估值；差异或失败项要回到上游输入补齐，再重算、再读回。
+
+`业务块导航` 是块级索引，`常见场景` 是按用户目标直接找步骤；这张主线表用于“不知道目标属于哪一步”时定位。三者不互相替代。
 
 ## 再理解本项目：Agent 操作 AMS 的入口
 
-`rqams-harness` 为 AMS 用户 Agent 提供 Python API 与 CLI 操作入口；业务数据和计算由 AMS 管理，本项目不另建一套估值系统。当前公开 **19 个业务块、146 个操作方法**，只覆盖下方导航列出的能力：可导入交易流水、交割单、估值报告、资产单元持仓单、托管事件、份额事件和产品持仓表，可读取头寸报表、指标与分析结果，可查询风险条款、实时预警、市场行情与基准数据，可追查导入凭证，可读取与调整资源授权、生成周报、列举并切换工作空间。AMS 已有、但本 Harness 仍无对应操作的能力包括（不限于）：资产单元的可用持仓（候选与绑定口径见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)）与期货手续费参数、模拟交易、自定义指标注册表、平台与运维端点（用户设置、上传会话等）。不要把 AMS 的整体业务介绍当成可直接调用的 API 清单，也不要将读取数据后自行整理的报告称为 AMS 原生报告。
+`rqams-harness` 为 AMS 用户 Agent 提供 Python API 与 CLI 操作入口；业务数据和计算由 AMS 管理，本项目不另建一套估值系统。当前公开能力以 `rqamsh schema` 为准，只覆盖下方导航列出的范围：可导入交易流水、交割单、估值报告、资产单元持仓单、托管事件、份额事件和产品持仓表，可接收模拟交易信号并生成流水，可读取头寸报表、指标与分析结果，可查询风险条款、实时预警、市场行情与基准数据，可追查导入凭证，可读取与调整资源授权、生成周报、读取成员工作空间并选择目标空间。AMS 已有、但本 Harness 仍无对应操作的能力包括（不限于）：资产单元的可用持仓（候选与绑定口径见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)）与期货手续费参数、自定义指标注册表、平台与运维端点（用户设置、上传会话等）。不要把 AMS 的整体业务介绍当成可直接调用的 API 清单，也不要将读取数据后自行整理的报告称为 AMS 原生报告。
 
-操作前先读[连接、身份、等待与错误](connection.md)。`rqamsh schema` 可离线查询当前完整能力；其中 `balances.get` 只显示统一单日签名及其历史自定义基准限制。CLI 将方法名中的下划线替换为连字符，`data` 使用 `--input`（别名 `--data`）。每个业务页给出完整参数、默认值与覆盖规则，并用返回字段表列出该操作实际返回的数据结构；表头、路径写法与通用返回结构的约定见[返回值与返回字段表](connection.md#return-fields)。
+操作前先读[连接、身份、等待与错误](connection.md)。`rqamsh schema` 可离线查询当前完整能力；其中 `balances.get` 只显示统一单日签名及其历史自定义基准限制。用户说法不确定对应哪个对象或操作时，按[Agent 业务翻译指南](guide.md)做语义映射：先确认边界与副作用，有歧义先澄清，写入先计划后确认；该指南不是关键词表。CLI 将方法名中的下划线替换为连字符，`data` 使用 `--input`（别名 `--data`）。每个业务页给出完整参数、默认值与覆盖规则，并用返回字段表列出该操作实际返回的数据结构；表头、路径写法与通用返回结构的约定见[返回值与返回字段表](connection.md#return-fields)。
 
-产品是独立核算边界；账户是产品内的流水归属配置，不是可独立选择的资源。产品组用于汇总成员，不是批量写入口。资产单元属于一个产品，其持仓单与产品流水、托管估值报告不能互相替代。
+产品是独立核算边界；账户是产品内的流水归属配置，不是可独立选择的资源。产品组用于汇总成员，不是批量写入口。资产单元属于一个产品，目前只用于收益互换的底层组合；其持仓单与产品流水、托管估值报告不能互相替代。
 
-## 常见场景：按步骤执行，再核对完成条件
+## 核心学习案例与其他业务场景
+
+学习如何把本页的业务与各页 API 串起来，先看[核心学习案例](demo/README.md)：从流水、估值表导入进入，以对账展示对象定位、状态解释、缺件补齐、差异处理和结果复查；[收益异常定位](demo/returns-diagnosis/README.md)从用户质疑的指标追到口径、异常日期和原始业务输入。这里只保留业务主线、机制与块导航，不维护全量任务及执行状态；下表中的其他场景是按需业务指引，不是待完成的案例清单，也不把缺少样例解释为缺少 API。
 
 先确认用户目标、获授权的唯一资源、业务日期或区间、数据源及交付形式。写入前确认覆盖范围并取得授权；下表中的写入方法名是操作指引，不是执行授权。
 
 |用户想做什么|API 步骤与处理方式|完成条件|
 |---|---|---|
-|建立产品并开始估值|`products.list/get` 查重和确认配置；确需新建时用 `products.name_exists/create`，按数据源准备账户、起始日、份额与基准 → 导入对应业务数据 → `products.compute_state` → `balances.get`|检查创建与导入错误，核对产品配置；计算状态为 `normal`，同日头寸与净值可读且符合输入。创建成功不等于已有估值|
-|导入或更正成交、资金流水|`products.get` 确认数据源和账户 → `trades.list` 查已有数据 → 新数据用 `trades.upload`，更正已有记录按 `trade_id` 用 `trades.update`；交割单用 `trades.upload_settlement_file` → `products.compute_state` → `balances.get`|逐项导入结果、计算状态与业务日期均核对；数量、资金和权益符合预期。部分失败可能已有合法项写入，不能整批盲目重传|
-|导入托管估值表并对账|`products.get` 确认数据源及估值表覆盖配置 → `valuation_reports.list` 查同日记录 → 明确授权后 `valuation_reports.upload` → `products.compute_state` → `reconciliation.list/diff` 查缺件与差异 → `balances.get`|报告日期与实际替换范围正确，估值就绪；缺件与差异逐项说明，人工结论用 `reconciliation.mark` 记录|
-|查对账状态、标记或自动对账|`reconciliation.list` 查区间缺件与人工状态 → `reconciliation.diff` 或资产单元 `reconciliation.asset_unit_diff/positions_statement` 核对差异 → 授权后用 `reconciliation.mark` 记录结论，或用 `reconciliation.auto/undo_auto` 采用、撤销估值表覆盖 → `products.compute_state` → `balances.get` 读回|缺件与差异均有解释，读写结果一致；自动对账返回不代表计算完成|
-|查看历史资产、仓位或盘中变动|历史截面用 `balances.get(resource_or_resources=..., date=...)`；实时截面用 `balances.get(resource_or_resources=...)` 或北京时间当天 `date`；历史时序用 `balances.series`；少数顶层字段传 `fields`|交付包含目标、实际返回业务日期或估值时点、头寸与所需字段；当天/省略日期为实时语义，不能冒充日终历史结果。省略 `classifier` 返回平铺头寸，传非空分类器返回含 `children` 的分层头寸|
-|分析收益、回撤、风险或画曲线|确认产品/组、区间、基准与日历 → 汇总用 `analytics.indicators`，曲线用 `analytics.series`，胜率用 `analytics.win_rate`，产品多空拆解用 `analytics.long_short_returns`|按[指标计算口径](analytics/metrics.md#indicators-returns)区分金额、比例及年化，注明缺失数据；不能以这些结果声称完成未暴露的完整归因分析|
-|汇总多只产品|`product_groups.list/get` 核对现有组；授权后按需 `product_groups.create/update` 配置成员 → 用组读取 `balances.get/series` 和 `analytics.indicators/series`；实时成员权重视图使用 `balances.get(include_component_weight_view=True)`|成员、权重、日期和计算口径明确；成员权重视图仅实时产品组且需相应权限。成员数据修改仍逐产品执行|
-|给产品或产品组打标签|`tags.list` 查现有标签与绑定 → `tags.upsert` 写入名称、说明与绑定对象（整体覆盖）→ 不再需要时 `tags.delete` 按标签 ID 删除|标签与绑定只属于当前用户与[工作空间](connection.md#workspace)；删除只影响标签与绑定，不动产品与产品组|
-|给场外资产定价|`custom_instruments.list/get` 查标的及价格 → 必要时 `custom_instruments.create` 建档 → 按覆盖意图选择 `custom_instruments.upload_fairvalue` 或 `custom_instruments.replace_fairvalues` → `products.compute_state` → `balances.get`|代码、归属产品、币种和价格日期正确；确认是覆盖文件最早日起全部价格还是替换完整历史，并核对受影响日期估值|
-|管理资产单元并核对持仓单|`asset_units.list/get` 确认单元及归属产品（与收益互换持仓的绑定口径见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)）；授权后按需 `asset_units.create/update` → `positions_statements.list` 查已有记录 → `positions_statements.upload` → `positions_statements.list(resource=..., is_detail=True)` 读回|模板、单元、日期及数量正确，同日覆盖符合授权；持仓单完成只代表相应输入与数量核对，不能据此宣称产品净值已核对|
-|录入或更正托管事件、份额事件|`products.get` 确认数据源 → `custodian_events.list`/`unit_events.list` 查已有记录 → 单条或批量用 `custodian_events.create/update/delete`、`unit_events.create/update/delete`，文件批量导入用 `custodian_events.upload_file` → `products.compute_state` → `balances.get` 读回|`effect_count` 与 `err_msg` 逐项核对；份额产品的申赎须带 `product_share`；文件导入是覆盖式，文件需包含该日起全部事件；自动份额事件只读|
-|导入产品持仓表并追查导入结果|`positions_sheets.get` 查已有日期 → 准备该日完整持仓 → `positions_sheets.upsert`（两种截面形态见[估值表输入的两种形态](valuation_reports.md#positions-sheet-input)）→ `get` 读回；导入批次用 `confirmations.list/get` 核对，必要时 `confirmations.latest` 与 `download`|预计与实际计数一致且 `error_messages` 为空；已有估值表覆盖的日期按跳过处理；凭证 `is_successful` 为真才表示全部登记|
-|封账、解封或批量核对缺表|`products.set_closing_entry` 或 `clear_closing_entry`；缺表用 `products.valuation_report_missing_dates` 汇总，再对单个产品用 `valuation_reports.missing_dates` 定位 → 补导报告 → `products.compute_state` → `balances.get`|封账日符合约定；缺表日期已补导或被明确排除；解封后重算到 `normal` 且头寸报表已核对|
-|输出头寸全景、指标时序或持仓单原文件|用 `balances.export_file`、`analytics.download_series_file` 或 `positions_statements.download` 指定新输出路径|文件已落盘且大小与实际内容核对；目标文件已存在时另选路径，不覆盖既有文件|
-|修正自动生成的红利或红股|`trades.list` 核对除权除息日结果 → `trades.create_auto_balance_override` 或 `delete_auto_balance_override` → 重新查询或读头寸报表|`effect_count` 与重新查询一致，普通流水未受影响|
-|分析持仓结构与暴露|`analytics.asset_weight` 看权重分布，`equity_holdings`/`convertible_holdings`/`convertible_positions`/`futures_holdings`/`option_holdings` 看各类资产持仓，需要交付线下时用 `holdings_summary_file`|任务终态成功；区间内有对应资产类别持仓，且分类标准、成员权重口径已注明|
+|建立产品并开始估值|`products.list/get` 查重和确认配置；确需新建时用 `products.name_exists/create`，模拟交易产品改用 `paper_trading.create` 按模板创建；再按产品类型准备账户、起始日、份额与基准 → 导入对应业务数据 → `products.compute_state` → `balances.get`|检查创建与导入错误，核对产品配置；计算状态为 `normal`，同日头寸与净值可读且符合输入。创建成功不等于已有估值|
 |做区间业绩归因|`analytics.create_attribution` 提交 → `analytics.attribution` 轮询同一归因 ID → 需要文件时 `analytics.export_attribution`；实时口径用 `realtime_risk_attribution`/`realtime_factor_exposure`|归因终态成功；区间、基准、模板与行业标准一一对应，删除归因是写操作|
-|比较成员产品的收益、规模与相关性|`analytics.group_returns`/`group_capital_size`/`group_returns_correlation`/`group_excess_correlation`/`group_allocation`/`group_indicators`，显式给成员与区间；报告用 `group_overview_file`|任务终态成功；成员集合与区间一致，组合对比只提供组级口径|
-|定位交易行为|`analytics.trading_analysis` 看区间交易，`analytics.single_trading_analysis` 看单标的，`analytics.algo_trading_performance` 看算法交易效果|任务终态成功；标的、方向、区间与算法过滤条件明确|
-|配置风险预警并查看实时预警|`risk_monitor.clauses` 查现有条款 → `create_clauses`/`update_clause`/`delete_clauses` 维护 → `risk_monitor.realtime_warnings` 看当前命中；持仓负面公告用 `illegal_announcements`|条款写入后逐项确认；实时预警的 `warning_msgs`/`warning_clause_ids`/`warning_resource_ids` 与条款一致，缺键不等于无风险|
-|取行情、日历与基准数据|`market_data.instruments` 查代码、`realtime_quotes` 取快照、`trading_dates` 对齐日历、`benchmarks`/`benchmark_returns` 取基准与收益；自定义基准用 `customized_benchmarks`/`create_customized_benchmark`/`update_customized_benchmark`/`delete_customized_benchmark`|自定义基准类型与权重合法（成分权重和为 1），行情与日历结果注明数据时点与日历口径|
-|给某只未覆盖的代码补某日公允价|`products.get` 确认产品 → `custom_instruments.insert_fairvalues` 提交该日价格 → `products.compute_state` → `balances.get`|目标日期价格已写入且其他日期未受影响；重复日期以更新而非重复记录结束|
-|把产品或组分享给同事、调整级别或收回|`permissions.list` 取授权行 → `permissions.grant` 按 `user_id` 授权或带该行 `id` 改级别，收回用 `permissions.revoke` 提交授权行 `id`；多个同类型资源一次授权用 `grant_many`|`effect_count` 与逐项 `error_messages` 核对；被授予级别不高于调用者在该资源上的级别，`admin` 不能通过本接口授予|
-|列举或切换工作空间|`workspaces.list` 看当前身份可见的空间 → `workspaces.use` 按 ID 或名称切到目标空间|返回被选中的空间记录；切换后先复读目标空间内的资源再写入，切换只影响当前客户端|
-|出一期周报|`analytics.weekly_report` 给成员与报告截止日 → 需要工作簿时 `analytics.weekly_net_value_report` 指定新输出路径|窗口以返回的 `data.start_date`~`data.end_date` 为准，成员按策略分入 `market_neutral` 或 `index_enhanced`；缺本周或全区间指标的成员不占条目，两类都为空不等于收益为零|
 
-跨产品的差异口径整理仍需用已暴露查询取得相同日期和口径的数据后自行组织，并标明数据来源、差异与缺失项；对账状态、差异、人工标记与估值表自动对账已由[reconciliation](reconciliation.md)承载。净值与收益指标、持仓分析、业绩归因、交易分析、组合对比、周报、风控监控与市场数据已分别由 [analytics](analytics/index.md)、[risk_monitor](risk_monitor.md)、[market_data](market_data.md) 承载，资源分享与授权由 [permissions](permissions.md) 承载，工作空间的列举与切换由 [workspaces](workspaces.md) 承载。超出上列范围的模拟交易与平台运维需求，应明确说明不能通过当前 Harness 直接完成；需要判断具体能力是否可用时，先用 `rqamsh schema` 或本页导航核对操作清单，不要按 AMS 业务全貌推断。
+跨产品的差异口径整理仍需用已暴露查询取得相同日期和口径的数据后自行组织，并标明数据来源、差异与缺失项；对账状态、差异、人工标记与估值表自动对账已由[reconciliation](reconciliation.md)承载。净值与收益指标、持仓分析、业绩归因、交易分析、组合对比、周报、风控监控与市场数据已分别由 [analytics](analytics/index.md)、[risk_monitor](risk_monitor.md)、[market_data](market_data.md) 承载，资源分享与授权由 [permissions](permissions.md) 承载，成员工作空间与目标空间选择由 [workspaces](workspaces.md) 承载。超出上列范围的平台运维需求，应明确说明不能通过当前 Harness 直接完成；需要判断具体能力是否可用时，先用 `rqamsh schema` 或本页导航核对操作清单，不要按 AMS 业务全貌推断。
 
-## 19 个业务块导航
+## 业务块导航
 
-按使用顺序排列：先确定工作空间，再确定资源并管理其标注与授权，然后导入输入数据，读取输出数据，最后是预警与市场数据。
+以下按业务块类型分组，便于按块查参数与操作；跨块的发生顺序见上面的“一条主线”。分组不是严格执行顺序：例如对账与输入数据同组，实际发生在估值和头寸之后；权限、标签在阶段 7 首次配置但作用贯穿全链，凭证是横切审计轨。
 
 ### 工作空间
 
-确定请求所属的数据分区：列举当前身份可见的工作空间，并在会话内切换。
+确定请求所属的数据分区：读取当前用户的成员工作空间，并为后续请求明确目标空间。
 
 |业务块|业务定位|支持目标与操作|
 |---|---|---|
-|[workspaces](workspaces.md)|工作空间列举与切换|list/use；切换只改请求头，不改身份|
+|[workspaces](workspaces.md)|成员工作空间与目标空间选择|list/use；列出成员空间并按成员 ID 选择目标分区，未指定时默认使用首项，选择不增加业务权限|
 
 ### 资源、标注与授权
 
-确定核算边界与成员，并管理资源的标注与访问：产品、产品组、产品下的资产单元，以及标签与权限。
+确定核算边界与成员，并管理资源的标注与访问：产品、产品组、产品下的资产单元（目前用于收益互换），以及标签与权限。
 
 |业务块|业务定位|支持目标与操作|
 |---|---|---|
 |[products](products.md)|产品配置/生命周期|产品 list/get/create/update/delete/recompute/compute_state/name_exists/field_exists/enable_shares/valuation_report_missing_dates/uploaded_file_hashes/set_closing_entry/clear_closing_entry/create_example|
 |[product_groups](product_groups.md)|成员组合与组配置|组 list/get/create/update/delete/recompute；不广播成员写入|
-|[asset_units](asset_units.md)|产品下资产单元；与收益互换持仓的绑定见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)|产品下 create/list；单元 get/update；list 可省略产品|
+|[asset_units](asset_units.md)|产品下资产单元，目前承载收益互换底层组合；绑定见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)|产品下 create/list；单元 get/update；list 可省略产品|
 |[tags](tags.md)|标签：产品与产品组的分组标注|list/upsert/delete；只需登录，写入与删除都是裸数组体|
 |[permissions](permissions.md)|产品或产品组的授权明细与分享|产品/组 list/grant/grant_many/revoke；批量只服务同一类型，`admin` 不能通过本接口授予|
 
 ### 输入数据
 
-把流水、报告、事件、截面与定价资料导入到已存在的产品与单元。
+把流水、报告、事件、截面与定价资料导入到已存在的产品与单元；模拟交易信号进入对应产品后生成流水。
 
 |业务块|业务定位|支持目标与操作|
 |---|---|---|
 |[trades](trades.md)|流水导入、管理、导出，以及交易类型对头寸的影响与写入校验|产品/组 list/download；产品 get/upload/upload_intraday_file/upload_settlement_file/update/delete；产品 create_auto_balance_override/delete_auto_balance_override|
+|[paper_trading](paper_trading.md)|模拟交易：按模板创建产品，信号进入模拟撮合后生成流水|create/get/list/upload_signals/list_signals/delete_signals/recompute/delete；对外按模板区分，不暴露实现版本|
 |[valuation_reports](valuation_reports.md)|托管估值报告输入；产品持仓表为其另一种截面形态，见[估值表输入的两种形态](valuation_reports.md#positions-sheet-input)|产品 list/upload/delete/download/missing_dates|
 |[custodian_events](custodian_events.md)|托管事件：权益、费用与科目调整输入|产品 list/latest/create/update/delete；跨产品文件 upload_file（覆盖式）|
 |[unit_events](unit_events.md)|手工申购与赎回份额|产品 list/create/update/delete；自动事件只读|
@@ -167,9 +215,9 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 |分类节点的行业基准|`shenwan_level_*`/`zx_level_*` 节点上的 `benchmark_returns`/`excess_returns` 是**当前行情快照**，与请求 `date` 无关；历史行业超额走归因|[头寸字段](fields/balances.md)|
 |风格暴露的"历史"|实时截面用 `realtime_factor_exposure`；逐日历史暴露走归因 `result.attribution.factor_exposure`（异步任务）|[业绩归因](analytics/attribution.md#create_attribution)|
 |扩指标只返回值|`extra_indicators` 白名单内的指标返回**只有值**，没有公式文本/版本/参数；白名单外的名字被静默忽略，不报错|[指标公式](analytics/metrics.md#indicators-returns)|
-|产品权限位|`products.list` 返回的 `permissions` 由服务端下发，客户端**不重算**；不要用本地权限推导判断可写性|[产品](products.md)|
-|工作空间列举与切换|列举走 AMS 用户接口 `/api/user/v1/workspaces`，未登录时返回 HTTP 200 与 `code` 非 0（不是 401）；切换只改请求头，同一会话即可换分区|[工作空间](workspaces.md)|
-|权限级别顺序|六个级别不是按名字排高低：`read_import_data`（三级）高于 `read_position`（二级）；路由要求的是下限，高级别可通过低级别要求的读取|[权限级别](permissions.md#权限级别)|
+|产品权限位|`products.list` 返回的 `permissions` 由 AMS 平台按请求人权限生成，客户端**不重算**；不要用本地权限推导判断可写性|[产品](products.md)|
+|成员空间不等于授权|`workspaces.list` 列的是当前用户所属空间，`use` 只改目标分区；能否读写由服务端按成员、AMS 权益与资源权限判定，不能靠改请求头扩大授权|[工作空间](workspaces.md#use)|
+|权限级别顺序|六个级别不是按名字排高低：`read_import_data`（三级）高于 `read_position`（二级）；操作要求的是下限，高级别可通过低级别要求的读取|[权限级别](permissions.md#权限级别)|
 |写入的必填与过滤|`products.create` 在所有数据源上运行期必填 `start_date`；`update` 没有字段白名单——提交未声明的键会直接报错，已声明的只读字段反而会被写入|[产品](products.md)|
 |导入流水的价格口径|`price` 填**不复权**实际成交价；持仓市值与净值按不复权行情算，用复权价导入会让买入金额与估值价格不同口径，凭空造出收益或亏损|[流水导入](trades.md#upload)|
 |名称与批量形态|`resource` 必须精确匹配 ID 或名称（不精确报「不存在或不可访问」，不做模糊匹配）；`balances.get` 的数组形态只接受 `fields`，`date`/`classifier`/`benchmark_id` 与非默认布尔参数传入即报 `invalid_argument`|[单字符串资源选择器](connection.md#单字符串资源选择器)|
@@ -178,7 +226,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 
 ## 必要边界
 
-本指南只覆盖 `rqamsh` 这一类能力（AMS 业务数据的取与受控写入）：它把服务端已算好、已落库的数据取回来，并做受控写入，不提供一站式报告、检索、调度、渲染或诊断封装——这类需求不是本项目缺口。第三方系统（企业微信、邮件、办公套件等）的对接与调用方自己的加工（渲染、调度、推送）不在这里：前者按对端官方文档自行实现，后者由 Agent 组合。三类的定义与归属表见[金律](#金律三类能力拼装本项目只做第三点)，定位与需求拆解见 [README](../README.md)。
+本指南只覆盖 `rqamsh` 这一类能力（AMS 业务数据的取与受控写入）：它把服务端已算好、已落库的数据取回来，并做受控写入，不提供一站式报告、检索、调度、渲染或诊断封装——这类需求不是本项目缺口。第三方系统（企业微信、邮件、办公套件等）的对接与调用方自己的加工（渲染、调度、推送）不在这里：前者按对端官方文档自行实现，后者由 Agent 组合。三类的定义与归属表见[金律](#金律三类能力拼装rqamsh-提供第三点)，定位与需求拆解见 [Agent 业务翻译指南](guide.md)。
 
 判断一项需求是否落在本指南范围，问三步：
 
@@ -188,7 +236,7 @@ AMS 的业务能力包括查看头寸和资产负债、净值与指标及基准�
 
 不要把第 2 类算作「AMS/本项目缺 X」；也不要因为缺第 1 类就不说明替代路径——应给出「用哪几个操作能拼出什么、哪些由 Agent 补」。
 
-- 本项目不代办登录，也不接收账号密码。向 AMS 管理员取得服务地址与可用的令牌（当前部署是登录会话 cookie，见[登录会话](connection.md#session-injection)）；工作空间默认使用可见空间中的第一个，需要时再切换，见[工作空间](workspaces.md)；本机地址也可能连接正式业务数据，客户端资源筛选不能替代服务端授权。
+- 本项目不代办账号密码登录，也不接收账号密码；认证只有 Bearer 令牌。人工首次使用可由业务命令触发浏览器登录；Agent 和自动化场景用 `--token @文件` 或 `RQAMSH_TOKEN`，不要让用户把令牌贴进对话。默认连接 RQAMS 官方地址 `https://www.ricequant.com`，私有化部署必须显式覆盖地址；令牌的取得、保存与优先级见[认证与令牌](connection.md#token-auth)。默认工作空间按显式参数、保存的最后选择、成员列表首项依次解析：未指定且无可沿用保存空间时使用服务端当次返回首项（不排序、不按权益筛选），首项缺少权益由服务端拒绝而不换后项，没有成员空间时报无可用空间；注入令牌不继承也不改写保存的空间。成员空间列表不等于 AMS 权益，见[工作空间](workspaces.md)。客户端资源筛选不能替代服务端授权。
 - 写入前确认身份、唯一目标、权限及覆盖范围；删除不等于物理擦除历史数据。重算会改变结果，不是只读诊断操作。
 - 导入成功、任务完成和估值就绪是不同阶段。检查逐项错误与计算状态，再读回同一日期的数据；等待超时不代表任务取消，保留任务 ID 并先确认原请求结果，不要直接重放写入。
 - 查询为空、字段缺失或 `null` 不表示零。新产品尚无历史头寸报表时，头寸报表、持仓和指标可能不可用；应核实真实起始日及初始化数据，而不是为消除错误编造历史。

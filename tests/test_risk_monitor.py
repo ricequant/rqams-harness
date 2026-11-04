@@ -56,6 +56,29 @@ def test_create_clauses_posts_bare_array(service):
     assert error.value.code == "invalid_argument"
 
 
+def test_clause_enums_reject_comparison_symbols_before_write(service):
+    """大于必须传 gt；> 与中文写法在本地拒绝，不能发到服务端换回 400。"""
+    client, state = service
+    base = {
+        "level": 2, "indicator_type": "product", "indicator": "unit_net_value",
+        "operation": ">", "value": 1, "crontab_expression": "0 * * * *",
+        "target_ids": {"products": ["p1"]},
+    }
+    for operation in (">", "大于", "GT", "gte "):
+        with pytest.raises(HarnessError) as error:
+            client.risk_monitor.create_clauses([{**base, "operation": operation}])
+        assert error.value.code == "invalid_argument"
+    with pytest.raises(HarnessError) as error:
+        client.risk_monitor.update_clause("c1", {"operation": ">"})
+    assert error.value.code == "invalid_argument"
+    assert state["requests"] == []
+
+    state["responses"] = [(200, {"inserted_count": 1})]
+    valid = {**base, "operation": "gt"}
+    assert client.risk_monitor.create_clauses([valid]) == {"inserted_count": 1}
+    assert _post_body(state) == [valid]
+
+
 def test_update_clause_uses_patch_and_rejects_empty_payload(service):
     """条款更新是 PATCH；空对象不会产生任何变更，必须在本地拒绝。"""
     client, state = service

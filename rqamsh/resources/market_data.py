@@ -174,18 +174,24 @@ class MarketData(_Resource):
             params={"order_book_ids": _selector(order_book_ids, "order_book_ids")},
         )
 
-    def index_futures_basis(self, *, dividend_adjusted: bool | None = None, fields: str | None = None) -> Any:
-        """读取指数期货基差数据。
+    def index_futures_basis(self, *, dividend_adjusted: bool = False, fields: str | None = None) -> Any:
+        """读取指数期货基差数据，并显式保留分红调整口径。
 
         Args:
-            dividend_adjusted: 是否使用分红调整后的基差。
+            dividend_adjusted: 是否使用分红调整后的基差；默认 false，不能省略后让调用方猜口径。
             fields: 可选字段列表，逗号串。
         Returns:
-            服务端原始基差数据。
+            服务端基差数据；对象结果会附带 dividend_adjusted，标明本次请求的口径。
         """
-        return self._client.call("GET", "index_futures_basis", params={
+        if not isinstance(dividend_adjusted, bool):
+            raise HarnessError("invalid_argument", "dividend_adjusted 必须为布尔值")
+        result = self._client.call("GET", "index_futures_basis", params={
             "dividend_adjusted": dividend_adjusted, "fields": fields,
         })
+        if isinstance(result, dict):
+            # 服务端当前不回显口径；客户端补一个显式标记，避免把两种基差当成同一结果。
+            return {**result, "dividend_adjusted": result.get("dividend_adjusted", dividend_adjusted)}
+        return result
 
     @staticmethod
     def _benchmark_payload(

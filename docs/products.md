@@ -8,24 +8,6 @@
 
 字段含义、类型与嵌套结构见[产品字段](fields/products.md)。创建、修改及删除的注意事项分别见下方对应 API。
 
-## 从用户需求到操作
-
-|用户需求|操作顺序|完成条件|
-|---|---|---|
-|找到要管理或分析的产品|`list` 筛选可访问产品 → `get` 核对数据源、账户与日期；后续优先使用产品 ID|目标唯一且配置符合用户指定的产品；列表为空不等于产品不存在|
-|建立新的估值对象|先确定流水、估值报告或混合数据源 → `name_exists` 检查名称 → 准备对应字段并 `create` → 按数据源导入业务数据|取得 `product_id`，检查 `err_msgs` 并用 `get` 核对；创建成功不表示已有可用估值|
-|调整配置或修正历史估值|`get` 保存修改前配置 → `update` 提交所需字段，必要时 `recompute` 指定起点 → `compute_state` → 读取受影响日期头寸报表|配置符合预期，计算状态为 `normal`，相关头寸报表已核对；提交数量不代表计算完成|
-|停用产品|确认目标及删除授权 → `delete` → `list` 核对不再可见|删除结果与列表一致；此操作不满足历史数据彻底擦除需求|
-|封账或解封|`set_closing_entry` 写入封账日 → `get` 核对；解封改用 `clear_closing_entry` → `compute_state` → 核对头寸报表|封账日符合业务约定；解封后重算已到 `normal` 且报表已核对|
-|批量核对哪些产品缺估值表|`valuation_report_missing_dates` 取缺失数量 → 对缺表产品用 `valuation_reports.list` 与 `missing_dates` 定位日期 → 补导报告|缺失数量归零或已解释，报告已导入并通过核对|
-|判断本地文件是否已上传|`uploaded_file_hashes` 取已上传哈希 → 与本地文件比对 → 决定补导或按覆盖参数重导|结论基于哈希比对，未重复导入同一文件|
-|把历史产品改为分类份额|准备份额设置与原事件归属 → `enable_shares` → 等待任务终态 → `get` 核对 shares 与事件归属|任务 `SUCCESS`，份额配置与事件归属与业务约定一致|
-|检查名称或字段是否可用|`field_exists` 指定一个字段 → 按 exists 决定是否调整取值|exists 结论来自对应字段检查，未把未占用当作创建成功的保证|
-
-
-
-
-
 
 ## API 使用约定
 
@@ -42,18 +24,18 @@ Python 签名：`rqamsh.products.list(*, fields: list[str] | None=None, sources:
 |`sources`|`list[str] \| None`|`None`|产品 data_source 枚举列表，不是流水来源。|
 |`member_user_id`|`int \| None`|`None`|按指定成员获分享的产品筛选，不突破当前用户可访问范围。|
 
-返回：服务端原始对象，含 `products`、`total` 与 `permissions`；`products` 只保留当前用户可访问的产品。
+返回：当前身份可见的产品列表对象，含 `products`、`total` 与 `permissions`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |`products`|产品列表|array（object 元素）|—|可访问产品数组，按创建时间倒序；元素为[产品配置](fields/products.md#product)|恒返回；元素字段由 `fields` 选择（省略时用服务端默认字段，恒保留 `id`），空数组表示当前范围内没有可见产品|
-|`total`|产品条数|integer|条|`products` 的元素个数|恒返回；按客户端可见目录过滤后重新计数，始终等于 `products` 的长度|
-|`permissions`|产品授权明细|array（object 元素）|—|网关按请求人权限产出的授权行；判断「我对这个产品能做什么」只用它，不要用资源能否读到推断|原样透传服务端响应；是否存在、元素结构及与 `products` 行的对应关系都不作保证，不能按同一行判断写权限|
-|`permissions[].product_id`|产品 ID|string|—|该授权行对应的产品|随父级记录返回；客户端不校验该 ID，也不保证它出现在 `products` 中或与 `products` 行对齐|
-|`permissions[].permission`|本人权限级别|string（枚举）|—|请求人在该产品上的权限，取值见[权限级别](permissions.md#权限级别)|随父级记录返回；取 `forbidden` 表示该产品对请求人不可读，不代表它不会出现在别人的列表里|
-|`permissions[].is_owner`|是否本人资源|boolean|—|`true` 表示请求人是工作空间管理员或该产品创建者；`false` 表示仅通过他人分享获得|随父级记录返回；`true` 不等于权限更高，管理员对自己没有权限记录的产品也会得到 `true` 且 `permission` 为 `forbidden`|
+|`total`|产品条数|integer|条|`products` 的元素个数|恒返回；按最终可见产品重新计数，始终等于 `products` 的长度|
+|`permissions`|产品授权明细|array（object 元素）|—|平台按请求人权限产出的授权行；判断「我对这个产品能做什么」只用它，不要用资源能否读到推断|由平台生成，客户端不重算；返回时 `permissions` 可能包含不出现在 `products` 中的产品；按 `product_id` 匹配，不要按数组下标或假设一一对应|
+|`permissions[].product_id`|产品 ID|string|—|该授权行对应的产品|随父级记录返回；可用于与 `products[].id` 匹配，但该 ID 不保证仍出现在最终 `products` 中；不要用数组下标代替该字段|
+|`permissions[].permission`|本人权限级别|string（枚举）|—|请求人在该产品上的显式授权级别，取值见[权限级别](permissions.md#权限级别)|随父级记录返回；`forbidden` 表示没有显式授权行，不等于不可读——创建者与空间管理员仍按最高级别处理；普通成员不会在列表里看到无权产品|
+|`permissions[].is_owner`|是否本人资源|boolean|—|`true` 表示请求人是工作空间管理员或该产品创建者；`false` 表示仅通过他人分享获得|随父级记录返回；`true` 时实际权限按创建者/管理员最高级别处理，不能仅凭同行的 `permission=forbidden` 判为不可读|
 
-结果检查：用 products 中的 ID 选择后续操作目标。指定 fields 时仍返回 id；total 是可访问范围内数量，member_user_id 筛选不会授予额外权限。需要判断写入或导出能否执行时，用 permissions 中的授权行（`write`/`admin` 才可改），但不要假设它与 `products` 逐行对齐，也不要用「能读到」推断「能改」。范围提醒：实盘/模拟由 `label` 表达（`live`/`paper`/`paper_trading`）；`product_state`、`closing_date`、`maturity_date`、`fund_code` 是与实盘属性彼此独立的维度。是否把已封账、已终止、已到期或未备案的产品算进本次范围属于业务口径，涉及这类范围时先向用户确认，不按字段名推断、也不默认排除。
+结果检查：列表只包含当前身份可见的产品；产品多时首次列表会变慢。用 products 中的 ID 选择后续操作目标。指定 fields 时仍返回 id；total 是可访问范围内数量，member_user_id 筛选不会授予额外权限。需要判断写入或导出能否执行时，若该 `product_id` 仍在 `products` 中，按 `product_id` 找到对应授权行（`write`/`admin` 才可改）；不要按数组下标，也不要用「能读到」推断「能改」。范围提醒：实盘/模拟由 `label` 表达（`live`/`paper`/`paper_trading`）；`product_state`、`closing_date`、`maturity_date`、`fund_code` 是与实盘属性彼此独立的维度。是否把已封账、已终止、已到期或未备案的产品算进本次范围属于业务口径，涉及这类范围时先向用户确认，不按字段名推断、也不默认排除。
 
 ```python
 result = rqamsh.products.list()
@@ -90,20 +72,50 @@ rqamsh products get --resource "授权测试产品"
 
 ## create
 创建产品，服务端按数据源校验配置并可能初始化估值。
-完整字段及 accounts、benchmark、valuation_settings、exchange_rate_settings、shares 展开见 [产品字段](fields/products.md)。create 至少需要 data_source、name、investment_category、strategy_category、benchmark、calendar、start_date（基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)、交易日见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)）。start_date 对所有数据源都在运行期必填，缺席时服务端报「产品开始日期不能为空」，与按数据源的必填集合无关；纯 trade 与混合 trade_and_valuation_report 均另需 unit_policy。提交初始化估值表（init_valuation_report_file）时可省略 start_date，服务端取该估值表的日期，但已给的 start_date 不能晚于该日期。maturity_date 不能早于 start_date；trading_start_date 省略时取 start_date 且不能早于它。纯估值报告源由报告建立起点，不能上传交易流水。
+完整字段及 accounts、benchmark、valuation_settings、exchange_rate_settings、shares 展开见 [产品字段](fields/products.md)。create 至少需要 data_source、name、investment_category、strategy_category、benchmark、start_date（基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)、交易日见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)）。calendar 可省略，省略时服务端建成 `exchange`；三个取值的含义见[估值日历](fields/products.md#calendartype)。start_date 对所有数据源都在运行期必填，缺席时服务端报「产品开始日期不能为空」，与按数据源的必填集合无关；份额策略的适用条件与客户端默认见[创建时的推荐起点](#创建时的推荐起点)。提交初始化估值表（init_valuation_report_file）时可省略 start_date，服务端取该估值表的日期，但已给的 start_date 不能晚于该日期。maturity_date 不能早于 start_date；trading_start_date 省略时取 start_date 且不能早于它。纯估值报告源由报告建立起点，不能上传交易流水。
+
+<a id="calendar-support"></a>
+**日历选择：** 按业务要求的统计和日期对齐口径设置 `calendar`，不要仅因持有港股就改变整个产品的日历。日历的含义见[估值日历](fields/products.md#calendartype)，产品组的日历推导与权重组调仓限制见[组日历与计算边界](product_groups.md#group-calendar)。
 
 创建或修改时不要提交只读字段 valuation_start_point、user_id、workspace_id、create_time、closing_date、product_state、id；用户和工作空间由连接身份确定。服务端不按字段白名单过滤请求体：提交**未声明的键**会直接失败（错误文案就是该键名，如 `'report_nam'`），而**已声明但业务上只读的状态字段**（如 `deleted`）会被接受并写入，受控字段集只能由调用方自己限制。初始化报告还可提供 init_valuation_report_file（Base64 文件内容）和 init_valuation_report_file_name（字符串文件名），这是产品初始化字段，不是 file_path。shares 键只能是单个英文字母，各项 effective_date 必填、费率非负。
-创建最小交易源配置示例（供 create 的 data 使用；示例中的 `000300.XSHG` 是指数代码，校验见[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)；请替换名称、日期与业务配置，并取得创建授权）：
+
+### 创建时的推荐起点
+
+服务端对少数字段有隐含默认，但默认不一定符合业务语义；例如省略 `label` 时当前服务端会落成 `paper`。下表是常见起点，供 Agent 在用户未指定时先做业务确认；只有标“客户端自动”的才是 `rqamsh` 实际补值，其余必须由调用方显式提交。
+
+|字段|推荐写法|适用条件与注意事项|
+|---|---|---|
+|`data_source`|按资料选择：只有交易流水用 `trade`；只有估值报告用 `valuation_report`；两者都有用 `trade_and_valuation_report`|没有通用默认；数据源决定后续可导入的数据与必填字段|
+|`label`|实盘产品显式传 `live`；模拟交易产品用[模拟交易](paper_trading.md)创建|省略时服务端当前落成 `paper`，不要依赖；`paper_trading` 不应通过通用 `products.create` 伪造|
+|`report_name`|与 `name` 相同|客户端自动：省略或空值时用产品名称|
+|`start_date`|真实首个业务日期|所有数据源都必填；不要用当天日期代替成立日|
+|`trading_start_date`|默认与 `start_date` 相同；实际交易起始日更晚时传真实日期|省略时服务端取 `start_date`|
+|`calendar`|按沪深交易日统计和对齐用 `exchange`；按港股通共同开市日统计和对齐用 `exchange_hkt`；按自然日用 `natural`|省略时服务端落 `exchange`；日历含义见[估值日历](fields/products.md#calendartype)，产品组的限制见[组日历与计算边界](product_groups.md#group-calendar)|
+|`unit_policy`|优先 `auto_prev_unit_net_value`；份额由外部系统直接维护时用 `manual`|`trade` 与 `trade_and_valuation_report` 必填；客户端自动：未提供该键时补 `auto_prev_unit_net_value`，显式 `manual`、`null` 或其他值不覆盖、交由服务端判定；纯 `valuation_report` 不补|
+|`auto_overwrite`|`false`|混合数据源推荐；客户端在省略时自动传 `false`；只有明确要自动采用后续估值表覆盖时才传 `true`|
+|`realtime_period_type`|`daytime`；估值表日盘后处理用 `valuation_day`|按实际监控时段选择|
+|`accounts`|真实账户：名称可用 `{产品名}_交易账号`，`is_custodian` 用 `false`，`account_number`、`broker` 填真实值|有交易流水时提供；不能编造账号或券商；模拟交易账户由专用创建操作生成|
+|`benchmark`|真实业绩基准；常见宽基示例为 `{"type":"index","id":"000300.XSHG"}`|示例不是默认值；自定义基准用 `type=customized_index` 与基准 ID|
+|`investment_category`、`strategy_category`|按产品实际分类；权益类股票多头示例为 `equity`、`stock_long`|必填，没有通用默认；策略分类会影响指增等指标口径|
+|`valuation_settings`|ETF 常用 `etf=iopv`；含期货/期权时按会计口径用 `fut_opt=settlement`；累计净值按分红口径用 `acc_net_value=acc_unit_dividend`|不适用时不要填；服务端只默认 ETF 口径，其他空值不等于业务口径|
+|`exchange_rate_settings`|有港股时 `{"HKD":"sh"}`；按实际通道选 `sh` 或 `sz`|无港股可省略|
+|`fee_settings`|未确认费率时省略或传 `{}`；不要把未知费率填成 `0`|`0` 会被当成真实免费费率参与计提|
+|`maturity_date`|无明确到期日时省略|服务端当前落 `2999-12-31`；不要用到期日表达策略期限|
+|`shares`|只有分类份额产品才填|没有多份额时省略；份额键只能是单个英文字母|
+
+创建最小交易源配置示例（供 create 的 data 使用；示例中的 `000300.XSHG` 是指数代码，校验见[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)；请替换名称、日期、账号与业务配置，并取得创建授权）：
 
 ```json
-{"name":"授权测试产品","data_source":"trade","start_date":"2026-01-01","unit_policy":"manual","investment_category":"equity","strategy_category":"stock_long","benchmark":{"type":"index","id":"000300.XSHG"},"calendar":"exchange"}
+{"name":"授权测试产品","label":"live","data_source":"trade","start_date":"2026-01-01","unit_policy":"auto_prev_unit_net_value","investment_category":"equity","strategy_category":"stock_long","benchmark":{"type":"index","id":"000300.XSHG"},"calendar":"exchange","accounts":[{"name":"授权测试产品_交易账号","is_custodian":false,"account_number":"<真实账号>","broker":"ricequant"}]}
 ```
+
+客户端默认值与真实账户要求见[创建时的推荐起点](#创建时的推荐起点)；需要模拟交易模板时按[模拟交易](paper_trading.md)创建，不通过通用产品配置补造。
 
 Python 签名：`rqamsh.products.create(data: dict[str, Any])`。
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
-|`data`|`dict[str, Any]`|必填|产品 JSON；必含 data_source、name、investment_category、 strategy_category、benchmark、calendar，其他必填字段依数据源而定。|
+|`data`|`dict[str, Any]`|必填|产品 JSON；必含 data_source、name、investment_category、 strategy_category、benchmark，其他必填字段依数据源而定；calendar 可省略（默认 `exchange`）。|
 
 返回：服务端创建结果，含 `product_id` 与 `err_msgs`；`err_msgs` 非空即抛部分失败异常。
 
@@ -262,7 +274,7 @@ rqamsh products name-exists --name "授权测试产品"
 ## field_exists
 检查产品名称、全称、账号名称或基金代码是否已被占用。四个参数必须且只能提供一个；同时提供多个会失败，不会按服务端固定顺序静默取第一个。
 
-账号名称走检查 `accounts.name` 的专用路由：服务端通用检查把 `account_name` 映射到顶层同名字段，该分支恒为 false，因此本操作对该字段改用专用端点，避免把“未占用”误报为可用名称。
+账号名称使用 `accounts.name` 的专用检查：通用名称检查会把 `account_name` 映射到顶层同名字段，该分支恒为 false，因此本操作对该字段改用专用检查，避免把“未占用”误报为可用名称。
 
 Python 签名：`rqamsh.products.field_exists(*, name: str | None=None, full_name: str | None=None, account_name: str | None=None, fund_code: str | None=None)`。
 
@@ -365,7 +377,7 @@ rqamsh products valuation-report-missing-dates
 
 `file_type` 取值见[可校验文件类型](#hashablefiletype)。三类都会为请求到的产品返回条目，`hash_list` 为空数组表示该产品没有该类型的已上传哈希；唯一会缺席的是估值报告分支的数据源过滤——非估值报告数据源产品被排除，不返回条目。
 
-该路由不校验资源读取级别：他人产品只要在当前工作空间可见就能查询，不需要额外的导入数据或持仓读取权限。
+该操作不校验资源读取级别：他人产品只要在当前工作空间可见就能查询，不需要额外的导入数据或持仓读取权限。
 
 Python 签名：`rqamsh.products.uploaded_file_hashes(product_ids: list[str], file_type: str)`。
 

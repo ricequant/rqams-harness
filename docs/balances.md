@@ -1,30 +1,18 @@
 # 头寸报表 balances
 
-`balances` 的公开读取操作分四类：单日入口 `get`（单资源或批量）与历史/盘中时序 `series`，`previous_summary`、`previous_summaries` 读取上一交易日概览，`export_file`、`export_snapshot` 导出工作簿，`field_earliest_date`、`field_earliest_dates` 查询字段最早存在日期。`get` 根据 `date`、资源类型和请求参数选择历史或实时底层查询；调用方不选择模式，也不需要知道底层 HTTP 路由。该收敛只发生在 Harness 客户端，AMS 服务端既有 HTTP/YApi 端点不改动。
+`balances` 的公开读取操作分四类：单日入口 `get`（单资源或批量）与历史/盘中时序 `series`，`previous_summary`、`previous_summaries` 读取上一交易日概览，`export_file`、`export_snapshot` 导出工作簿，`field_earliest_date`、`field_earliest_dates` 查询字段最早存在日期。`get` 根据 `date`、资源类型和请求参数自动选择历史或实时形态；调用方不选择模式，也不需要知道底层实现。
 
 头寸报表描述产品或产品组某一业务时点的资产、负债、净资产、净值和持仓。实时结果用于观察最新可用估值状态；历史结果用于可重复的日终核对。字段含义、计算口径和分类树见[头寸字段与计算](fields/balances.md)，区间业绩分析见[指标公式](analytics/metrics.md#indicators-returns)。
 
-## 从用户需求到操作
+## 相关学习案例
 
-|用户需求|操作与输入|结果判读|
-|---|---|---|
-|核对过去某日净资产、净值和持仓|`get`，传过去的 `date`；不传 `fields` 取得完整报表|核对返回业务日期、权益、净值和 `positions`；`null` 不等于 `0`。|
-|查看今天或当前可用状态|`get`，省略 `date` 或传北京时间当天；按需传 `fields`、`classifier`、`drilldown`|核对实际返回日期、`update_time`、结算状态和分类/穿透口径；请求时间不是行情时间。|
-|解释产品组各成员及权重|实时 `get`，资源为产品组，传 `include_component_weight_view=True`|按成员产品 ID→成员对象读取；保留每个成员的 `product_weight` 和错误信息，不能摊平成一个组报表。|
-|只交付少数顶层字段|`get`，传非空 `fields`，例如 `['total_equity', 'unit_net_value']`|只使用实际返回的字段；服务端缺失字段不补 `null`，已返回的 `null` 原样保留。|
-|查看历史变化或逐日对账|`series`，明确 `start_date`/`end_date`；用 `position_fields` 选择额外持仓字段|按逐日结果检查日期覆盖与缺失；不能把缺失日期补成零头寸报表。|
-|快速查看最近一个已结算交易日的概览|`previous_summary`（单个）或 `previous_summaries`（批量）|核对返回资源与概览字段；估值未就位的资源不出现，批量失败项在 `error_messages` 中。概览用于观察最近一个已结算交易日，不能替代当日实时结果或指定历史日期的结果。|
-|把持仓全景交给线下核对|`export_file` 指定输出路径，必要时传过去的 `date`|文件已落盘且字节数与服务端一致；目标文件已存在时不覆盖。|
-|一次读取多只产品/产品组的当天截面|`get`，第一个参数传数组；只给 `fields`|按资源 ID 读取结果，并检查 `pending_valuation` 与 `error_messages` 是否都为空。|
-|导出实时监控快照|单资源用 `export_snapshot(resource, output)`；多资源传数组并用 `previous_trading_day` 取上一交易日口径|文件已落盘；单资源与多资源接受的参数不同，交叉传入会被拒绝。|
-|看盘中逐时点变动|`series`，省略 `end_date`（盘中分支），按需传 `benchmark_id`|得到当日分时序列 `asset_series` 与区间起止；盘中序列没有 `start_date`、也不接受 `position_fields`。|
-|确认某字段从哪天开始有数据|`field_earliest_date` 或 `field_earliest_dates`，只传产品|返回最早日期；产品组会被拒绝，不能把空结果当成「从未有数据」。|
+[流水更正](demo/historical-trade-correction/README.md)、[估值表导入](demo/valuation-report-reconciliation/README.md)与[对账案例](demo/reconciliation-controls/README.md)展示如何读回头寸、核对目标日及后续影响；[收益异常定位](demo/returns-diagnosis/README.md)进一步区分当日涨跌、持仓浮亏与产品区间收益，并沿历史输入查因。
 
 先确认产品已有匹配数据源的流水或估值报告、产品组已配置成员。无数据、字段缺失、等待超时或未就绪时应报告缺口，不输出零净资产结论，也不得改用上一交易日概览或邻近日期报表替代当日结果。需要可重复对账时必须传过去的业务日期；当天和未传日期都是实时语义，不能用来冒充某日的历史结算结果。
 
 ## API 使用约定
 
-Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连接说明](connection.md)。`resource` 是当前身份可访问的唯一产品或产品组 ID/名称；名称多匹配时先用 ID 消歧。该业务块只读计算结果，不新增、修改或删除持仓，也不下单。头寸字段的定义、计算、精度和输入链统一见[头寸字段字典](fields/balances.md#balance-calculation)；修正估值应按授权修改相应[流水](trades.md)、[估值报告](valuation_reports.md)或产品配置，再读取受影响日期。
+Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连接说明](connection.md)。`resource` 是当前身份可访问的唯一产品或产品组 ID/名称；名称多匹配时先用 ID 消歧。该业务块只读计算结果，不新增、修改或删除持仓，也不下单。收益与净值不是同一个概念：`daily_returns` 是收益率；`unit_net_value` 是单位净值，其环比不是收益率。用户问收益或涨跌时用 `daily_returns`，不要用单位净值或净资产变化率替代。头寸字段的定义、计算、精度和输入链统一见[头寸字段字典](fields/balances.md#balance-calculation)；修正估值应按授权修改相应[流水](trades.md)、[估值报告](valuation_reports.md)或产品配置，再读取受影响日期。
 
 普通结果是报表对象而非裸 `positions` 列表：
 
@@ -40,7 +28,26 @@ Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连�
 - 日期必须是严格的 `YYYY-MM-DD`；未来日期、时间戳和无效日期在客户端以 `invalid_argument` 拒绝。
 - 实时结果的实际业务归属以返回值为准。夜盘可能归属下一交易日，缓存的实时行情也可能早于请求时间；应同时检查返回日期、`update_time`，以及期货/期权是否已取到结算价（持仓 `has_settlement`，根级看 `all_futures_options_has_settlement`）；「结算」的四种含义见[结算类字段词义](fields/balances.md#settlement)。`has_settlement` 为 `false` 只表示这次返回里对应期货/期权合约还没有行情结算价（盘中普遍如此，日终才有），属行情状态，不等于整条结果未就绪——结果是否就绪看 `pending_valuation` 与 `error_messages`。需要结算价的口径据此标注本次结果不含结算价，等行情更新后重读同一操作；不依赖结算价的字段照常交付。两者都不得改用上一交易日概览替代当日结果。
 
-对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求可以使用净值摘要路由。夜盘或周期未知的产品绝不因传了当天日期而误走历史摘要：展示期货冲销项时，Harness 改用不带 `date` 的 `asset_snapshot_summary`；不展示时改用不带 `date` 的 `balance`，并要求头寸读取权限。此为内部路由选择，不是额外的公开操作。
+对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求会返回净值摘要。夜盘或周期未知的产品不会因传了当天日期而误用历史摘要：展示期货冲销项时返回不带日期的实时快照摘要；不展示时返回完整头寸视图，并要求头寸读取权限。返回形态由客户端按参数选择，不是额外的公开操作。
+
+<a id="top-level-fields"></a>
+## 报表顶层字段
+
+`get`、`series`、`previous_summary` 的报表共享以下顶层字段；本表只列净资产与收益相关字段，`benchmark_returns`、`excess_returns` 等条件字段见各操作表。字段公式、精度和空值分支统一见[头寸字段字典](fields/balances.md#balance-calculation)。
+
+|英文字段|中文名称|JSON 类型|单位|业务含义|备注|
+|---|---|---|---|---|---|
+|`total_assets`|总资产|number|元|资产总额；含现金、证券、应收等|随父级返回；不是持仓市值合计|
+|`total_liabilities`|总负债|number|元|负债总额|随父级返回；期货、期权和收益互换不另记负债|
+|`total_equity`|净资产|number|元|`total_assets−total_liabilities`|随父级返回；资产单元结果没有份额与净值|
+|`units`|份额|number / null|份|产品当前份额|随父级返回；无份额产品为空|
+|`unit_net_value`|单位净值|number / null|元/份|`total_equity/units`|随父级返回；不是收益率，其环比不是收益率|
+|`acc_unit_net_value`|累计单位净值|number / null|元/份|累计分红口径的每份净值|随父级返回；不是单位净值|
+|`adjusted_net_value`|复权净值|number / null|元/份|由日收益递推的复权净值|随父级返回；不是累计分红净值|
+|`daily_pnl`|当日盈亏|number|元|产品当日盈亏金额|随父级返回；是金额，不是收益率|
+|`daily_returns`|当日收益率|number / null|比例（小数）|产品当日收益率|随父级返回；不是金额；不能用 `unit_net_value` 环比或净资产变化率替代|
+|`acc_unit_dividend`|累计每份分红|number / null|元/份|产品累计每份分红|随父级返回；不是持仓股票分红|
+|`update_time`|数据更新时间|string / null|—|头寸报表重算时间；实时非快速重算在持仓键集合（含三级估值表虚拟汇总行）有增删时刷新为本轮时间|随父级返回；不是行情 tick 时间；判定口径见[头寸字段](fields/balances.md#data-update-time)|
 
 ## get
 
@@ -54,7 +61,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 |---|---|---|---|
 |`resource_or_resources`|`str \| list[str]`|必填|单个唯一产品或产品组 ID/名称，或非空数组；成员权重视图仅接受产品组。数组形态只接受 `fields`：`date`、`classifier`、`benchmark_id` 与 `drilldown=False`、`show_futures_sterilisation=False`、`include_component_weight_view=True` 都不支持，传入即报 `invalid_argument`。|
 |`date`|`str \| None`|`None`|严格 `YYYY-MM-DD`。<br>&emsp;省略或北京时间当天：实时。<br>&emsp;过去日期：历史。若服务端返回其他非空日期，客户端报 `historical_date_mismatch`，绝不把它当作请求日。<br>&emsp;未来日期：拒绝。|
-|`fields`|`list[str] \| None`|`None`|`None`：返回完整报表，含 `positions`。<br>&emsp;非空列表：投影最终结果的顶层字段。<br>&emsp;只接受顶层字段名；持仓传 `positions`，禁止 `positions.quantity` 等嵌套路径。|
+|`fields`|`list[str] \| None`|`None`|`None`：返回完整报表，含 `positions`。<br>&emsp;非空列表：投影最终结果的顶层字段。<br>&emsp;可用顶层字段见[报表顶层字段](#top-level-fields)与本操作返回表的结构键；只接受顶层字段名，持仓传 `positions`，禁止 `positions.quantity` 等嵌套路径。|
 |`classifier`|`str \| None`|`None`|`None`：平铺持仓。<br>&emsp;非空分类口径（如 `asset_class`）：返回带 `children` 的分类树。<br>&emsp;空字符串和纯空白值：拒绝。|
 |`show_futures_sterilisation`|`bool`|`True`|是否展示期货冲销项。实时请求取 `False` 时，不能同时请求不穿透、自定义基准或成员权重视图。|
 |`benchmark_id`|`str \| None`|`None`|基准**纯 ID**；不得传“类型,代码”形式或包含逗号。<br>&emsp;省略：使用资源配置。<br>&emsp;过去日期：只支持顶层收益字段；`fields=None`、`positions` 或 `daily_pnls` 与自定义基准组合会被拒绝。|
@@ -65,7 +72,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 
 返回：返回形态共四支，由参数与资源类型选择——`fields=None` 是完整头寸报表，非空 `fields` 是最终结果的顶层字段投影，`include_component_weight_view=True` 是「成员产品 ID → 成员对象」映射，数组形态是「资源 ID → 实时概览」映射加两个诊断键。四支都原样保留服务端的业务日期、`null`、缺失键与任务包装，不把缺失补成 `0`。
 
-下表 `{资源 ID}` 是动态键占位符，不是实际 JSON 键。
+下表 `{资源 ID}` 是动态键占位符，不是实际 JSON 键。下表只列结构键、条件键和诊断键；净资产与收益字段见[报表顶层字段](#top-level-fields)，不要因为本表未逐行列全就认为报表只有这些字段。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
@@ -73,19 +80,22 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 |`date`|报表业务日期|string / null|YYYY-MM-DD|本次结果实际归属的业务日期|恒返回；实时分支的归属日由服务端监控周期决定，夜盘不一定等于请求当天；服务端当日无结果而回退默认文档时该键可能缺失|
 |`positions`|持仓明细|array（object 元素）|—|当前口径下的持仓：`classifier` 省略时为平铺持仓，非空时是经 `children` 连接的分类树；元素字段见[持仓明细](fields/balances.md#position)|由参数选择：`fields=None` 或投影含 `positions` 时返回；只接受顶层字段名，传 `positions` 才取得完整持仓结构，`positions.quantity` 这类嵌套路径被拒绝|
 |`positions[].children`|分类子节点|array（object 元素）|—|分类节点挂载的下一层分类或叶子持仓|由参数选择：`classifier` 非空时随分类节点返回；分类节点的汇总量与叶子持仓不能重复相加|
-|`positions[].level_type`|分类层级字段名|string|—|该节点所在层的索引字段名：根节点是固定顶层标记（`top_level`，服务端写为前后各两个下划线的私有形态），`asset_class` 分类下依次是 `product_accounting_major_subject`、`asset_category`、`asset_class`|由参数选择：`classifier` 非空时只随分类节点返回；叶子持仓记录没有该键，不能用它判断叶子层级|
+|`positions[].level_type`|分类层级字段名|string|—|该节点所在层的索引字段名：根节点是固定顶层标记（`top_level`，服务端写为前后各两个下划线的私有形态），`asset_class` 分类下依次是 `product_accounting_major_subject`、`asset_category`、`asset_class`；部分品种在 `asset_class` 之下还有一层 `gross_direction` 方向父行|由参数选择：`classifier` 非空时只随分类节点返回；叶子持仓记录没有该键，不能用它判断叶子层级；`gross_direction` 只在 `classifier=asset_class` 时出现，见下方方向父行说明|
+|`positions[].summary_kind`|分类汇总类型|string|—|分类节点的汇总口径；当前只在方向父行上取 `gross_direction`|由参数选择：仅 `classifier=asset_class` 的方向父行返回；其它分类节点不带该键|
+|`positions[].direction`|多空方向|string（枚举）|—|方向父行的方向；叶子持仓同名字段见[持仓明细](fields/balances.md#position)|由参数选择：方向父行恒带该键（取值见[多空方向](fields/balances.md#direction)）；资产类父行不带该键，不能据它判断父行是多头还是空头净额|
 |`positions[].name`|节点或标的名称|string|—|分类节点是该层分组的显示名，叶子持仓是标的名称|随父级记录返回；分类节点的显示名可能被服务端改写（活期存款节点固定显示「活期存款」，而 `level_type` 仍是 `asset_class`），判断层级用 `level_type`，不要用 `name` 反推 `asset_class`|
 |`share_values`|分类份额估值|object（string 键 → object） / null|—|`{份额类别}` → 分类份额字段对象，逐项见[分类份额](fields/balances.md#productsharevalue)|随父级返回；实时快照分支（不展示期货冲销项的实时查询）返回完整截面时才保证带该键与应付份额子持仓|
-|`total_equity`|净资产|number / null|—|报表顶层字段之一；`total_assets`、`total_liabilities`、`units`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns`、`update_time` 等其余顶层字段同名同义，含义与计算见[头寸字段字典](fields/balances.md#balance-calculation)|随父级返回；投影只保留调用方请求且服务端实际返回的字段，未知或未返回的字段省略，实际返回的 `null` 原样保留|
 |`benchmark_returns`|基准收益|number / null|—|该业务日的基准收益|由参数选择：`fields` 含该键或 `excess_returns` 时返回|
 |`excess_returns`|超额收益|number / null|—|当日收益减基准收益|由参数选择：`fields` 含该键或 `benchmark_returns` 时返回；服务端会一并计算两者，投影只保留调用方请求的字段|
 |`{资源 ID}`|成员对象或实时概览|object|—|成员权重视图为成员产品 ID → 成员报表；批量实时截面为资源 ID → 该资源的实时概览|由参数选择：成员视图（`include_component_weight_view=True`）与数组形态的结果根键；不是实际 JSON 键|
 |`{资源 ID}.product_weight`|成员权重|number / null|—|该成员在产品组内的权重|成员视图随成员对象返回；`error_messages` 或 `pending_valuation` 非空时本次响应所有成员都不带该键|
 |`error_messages`|未就绪原因|object（资源 ID → string）|—|按资源 ID 记录该项失败原因，原样来自服务端|成员视图与数组形态恒返回，无失败项时为空对象；逐项失败容器见[逐项失败容器](connection.md#item-errors)|
-|`pending_valuation`|未就绪资源|array（string 元素）|—|已请求但未出现在结果中的资源 ID|成员视图与数组形态恒返回；由 Harness 依据缺失项推导，服务端不返回该键|
-|`status`|任务状态|string（枚举）|—|服务端任务包装的外层状态|由数据决定：部分内部路由返回任务包装时原样保留，不拆包；见[任务终态 JSON](connection.md#task-result)|
+|`pending_valuation`|未就绪资源|array（string 元素）|—|已请求但未出现在结果中、且不在 `error_messages` 中的资源 ID|成员视图与数组形态恒返回；由 Harness 依据缺失项推导，服务端不返回该键；不证明已有计算任务|
+|`status`|任务状态|string（枚举）|—|服务端任务包装的外层状态|由数据决定：部分接口返回任务包装时原样保留，不拆包；见[任务终态 JSON](connection.md#task-result)|
 
 - 分类树的分类节点除 `name`、`level_type`、`children` 外，带的是同名汇总值（`market_value`、`daily_pnl`、`acc_pnl`、`weight`、`contribute_returns`、`floating_pnl` 等）：字段名与[持仓明细](fields/balances.md#position) 相同，口径是整层汇总，不能当逐仓值使用，也不能与叶子相加。根节点的 `daily_pnl_rate` 实际是头寸 `daily_returns`、`daily_pnl` 是产品层口径，与叶子同名字段不同源。
+- 方向父行（仅 `classifier=asset_class` 且非平铺时）：商品期货、股指期货、商品类期权的资产类节点下，以及商品期货平衡项、股指期货平衡项、利率期货平衡项、场外期货平衡项的节点下，会按实际存在的方向插入一层 `level_type=gross_direction`、`summary_kind=gross_direction` 的父行，名称形如「商品期货-多头」「商品类期权-空头」，并用 `direction` 标明方向。该行的 `market_value` 是该方向下各仓的有符号汇总，仍是汇总节点而不是叶子持仓；资产类父行保持净额，方向父行与资产类父行不能重复累加，方向父行之间可以相加。没有持仓的方向不生成该行；平衡项方向行的 `floating_pnl_percentage`、`acc_pnl_rate`、`daily_pnl_rate` 为空值（平衡项只抵消市值，不计算持仓收益率）。
+- 三级估值表来源的单日持仓：平铺结果与分类树隐藏虚拟汇总行（`virtual_*`）；资产类别与交易资产属性树保留其父级金额，行业树提前排除虚拟行，并不代表完整资产分布。返回的 `positions` 不一定是该日完整持仓集合，不能逐仓加总复算总资产、总负债或净资产。各读取形态的区别见[三级估值表与虚拟汇总持仓](fields/balances.md#level3-virtual-positions)。
 - 行业分类（`shenwan_level_1`、`shenwan_level_2`、`zx_level_1`、`zx_level_2`）节点上的 `benchmark_returns` 与 `excess_returns` 是**按当前行情快照**算出的行业基准收益（该层成分股按权重加权），与请求的 `date` 无关；请求历史日期时这两个键仍给当日口径。需要历史区间或逐日的行业超额，走 [业绩归因](analytics/attribution.md#create_attribution) 的区间行业归因，或自行按 `market_data.benchmark_returns` 与行业分类计算，不要直接采用历史日期下分类节点的这两个键。
 - 成员权重视图：成员报表不能合并或摊平成产品组报表；即使投影不包含它，成员对象的 `product_weight` 与结果中的 `error_messages`、`pending_valuation` 仍会保留。
 - 成员权重的完整性只能由两个诊断键共同判定：服务端在存在错误信息时**不会计算权重**，本次响应里所有成员都没有 `product_weight`；估值未就绪的成员还会被静默跳过，此时同样不返回任何 `product_weight`。因此“权重完整”= `error_messages` 为空 **且** `pending_valuation` 为空；只看其中一项会把残缺成员集合误读成完整权重。
@@ -95,7 +105,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 
 ### 批量实时截面
 
-数组形态的 `get` 走批量实时汇总路由，用于一次看多只产品/产品组当天的就绪情况：
+数组形态的 `get` 使用批量实时汇总，用于一次看多只产品/产品组当天的就绪情况：
 
 ```python
 batch = rqamsh.balances.get(resource_or_resources=['授权测试产品', '授权测试产品组'], fields=['total_equity'])
@@ -107,21 +117,21 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 ```
 
 - 结果为资源 ID → 汇总的映射加两个诊断键，键形与返回条件见上表 `{资源 ID}`、`pending_valuation`、`error_messages` 三行。
-- 两个诊断键都为空才表示本次请求全部就绪；缺失且不在 `error_messages` 中的资源说明估值尚未触达，按[未就绪与缺输入](connection.md#unready-inputs)稍后重试，不能当作零头寸。批量与成员权重视图的重试都按本页[组合限制与错误](#组合限制与错误)的要求提交同一请求，不得改用上一交易日概览或邻近日期报表替代。
-- `fields` 以数组下发，服务端按字段名过滤；该路由不接受日期、分类、基准与成员视图参数。
+- 两个诊断键都为空才表示本次请求的资源均已返回，仍需核对所需字段与日期；缺失且不在 `error_messages` 中的资源只说明所需结果未返回，不证明已经触发计算或正在计算，按[未就绪与缺输入](connection.md#unready-inputs)等待或诊断，不能当作零头寸。批量与成员权重视图的重试都按本页[组合限制与错误](#组合限制与错误)的要求提交同一请求，不得改用上一交易日概览或邻近日期报表替代。
+- `fields` 以数组下发，服务端按字段名过滤；该调用不接受日期、分类、基准与成员视图参数。
 
-### 内部路由与权限
+### 返回形态与权限
 
-调用方只使用 `get`；下表说明相同表面签名对应的内部路由，以及网关对这些路由的最低读取级别（客户端不预判权限，越级由网关拒绝）：
+调用方只使用 `get`；下表说明不同请求条件返回的内容与最低读取级别（客户端不预判权限，越级由平台拒绝）：
 
-|请求条件|Harness 内部选择|网关最低读取级别|
+|请求条件|返回内容|最低读取级别|
 |---|---|---|
-|产品<br>&emsp;过去日期<br>&emsp;`fields` 为下列简字段<br>&emsp;平铺、穿透、展示冲销项、未自定义基准|`balance_summary` 内部路由|`read_net_value`|
-|明确日间周期产品<br>&emsp;当天或省略日期<br>&emsp;满足同一简字段和默认业务参数|实时净值摘要内部路由|`read_net_value`|
-|实时、展示期货冲销项，且不属于上面两行任一情形<br>&emsp;如 `fields=None`、`fields=['positions']`、夜盘或未知周期产品、产品组、自定义基准、成员视图|`asset_snapshot_summary` 内部路由|`read_net_value`|
-|任一条件：<br>&emsp;历史查询且不属于第一行（`fields=None`、产品组、`positions` 或其他字段、分类、不穿透、自定义基准、成员视图）<br>&emsp;实时且不展示期货冲销项|完整 `balance` 内部路由|`read_import_data`|
+|产品<br>&emsp;过去日期<br>&emsp;`fields` 为下列简字段<br>&emsp;平铺、穿透、展示冲销项、未自定义基准|净值摘要|`read_net_value`|
+|明确日间周期产品<br>&emsp;当天或省略日期<br>&emsp;满足同一简字段和默认业务参数|实时净值摘要|`read_net_value`|
+|实时、展示期货冲销项，且不属于上面两行任一情形<br>&emsp;如 `fields=None`、`fields=['positions']`、夜盘或未知周期产品、产品组、自定义基准、成员视图|实时快照摘要|`read_net_value`|
+|任一条件：<br>&emsp;历史查询且不属于第一行（`fields=None`、产品组、`positions` 或其他字段、分类、不穿透、自定义基准、成员视图）<br>&emsp;实时且不展示期货冲销项|完整头寸视图|`read_import_data`|
 
-简字段只有：`date`、`total_equity`、`total_assets`、`total_liabilities`、`units`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns`、`acc_unit_dividend`。字段含义和计算统一见[头寸字段字典](fields/balances.md#balance-calculation)。客户端根据资源和产品周期选择，调用方不能强制简字段路由；资源仍必须在当前身份授权范围内，详见[权限说明](permissions.md#可见不等于可写)。
+简字段只有：`date`、`total_equity`、`total_assets`、`total_liabilities`、`units`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns`、`acc_unit_dividend`。字段含义和计算统一见[头寸字段字典](fields/balances.md#balance-calculation)。客户端根据资源和产品周期选择，调用方不能强制简字段返回形态；资源仍必须在当前身份授权范围内，详见[权限说明](permissions.md#可见不等于可写)。
 
 ### 组合限制与错误
 
@@ -139,7 +149,7 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 |成员视图的资源不是产品组|资源类型校验失败|改用已授权的唯一产品组。|
 |数组形态传入日期、分类、基准或成员视图参数|`invalid_argument`|批量实时截面只支持 `fields`；需要这些参数时逐资源调用单资源形态。|
 |字段最早日期传产品组|资源类型校验失败|改用产品；组没有该字段口径。|
-|权限不足|来自服务端或网关|按上表申请 `read_net_value` 或 `read_import_data`；不要替换成猜测的资源 ID。|
+|权限不足|来自平台|按上表申请 `read_net_value` 或 `read_import_data`；不要替换成猜测的资源 ID。|
 |服务端尚在处理、等待超时、字段缺失或 `null`|结果尚未就绪或数据不可用|按[未就绪与缺输入](connection.md#unready-inputs)保留诊断并报告缺口；不得补零或反复查询代替缺失输入。|
 
 过去日期的完整历史报表：
@@ -220,6 +230,7 @@ rqamsh balances get --resource-or-resources "授权测试产品" --date "2026-01
 - `end_date` 省略表示读取当日盘中序列：此时不接受 `start_date` 与 `position_fields`，`benchmark_id` 仅在该分支可用；反之，历史分支必须同时给出 `start_date` 与 `end_date`，且不接受 `benchmark_id`。
 - `position_fields` 直接指定额外持仓字段名，不加 `positions.` 前缀。
 - 字段定义、计算和精度见[头寸字段字典](fields/balances.md#balance-calculation)。
+- 三级估值表来源的历史 `series` 可能保留落库的 `virtual_*` 行，不沿用单日 `get` 的虚拟叶子隐藏规则；这些行不能当作证券清单或逐券盈亏。盘中分支只给收益与净资产序列，不提供逐仓明细；其虚拟金额承接与汇总解锁规则见[三级估值表与虚拟汇总持仓](fields/balances.md#level3-virtual-positions)。
 
 Python 签名：`rqamsh.balances.series(resource: str, start_date: str | None=None, end_date: str | None=None, *, position_fields: list[str] | None=None, benchmark_id: str | None=None)`。
 
@@ -235,7 +246,7 @@ Python 签名：`rqamsh.balances.series(resource: str, start_date: str | None=No
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|历史时序元素|object|—|一个业务日的头寸报表对象，含 `date`(YYYY-MM-DD) 与 `total_equity`、`total_assets`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns` 等报表字段，逐项见[头寸字段字典](fields/balances.md#balance-calculation)|恒返回（历史分支）；元素键随服务端序列结构，不能按单日 `get` 的成员映射、分类树或字段投影规则解释|
+|`[]`|历史时序元素|object|—|一个业务日的头寸报表对象，含 `date`(YYYY-MM-DD)、[报表顶层字段](#top-level-fields) 与 `positions`|恒返回（历史分支）；元素键随服务端序列结构，不能按单日 `get` 的成员映射、分类树或字段投影规则解释|
 |`[].positions`|持仓明细|array（object 元素）|—|穿透后的持仓；元素含 `order_book_id`、`symbol`、`direction`、`asset_class`、`market_value`，以及 `position_fields` 指定的额外字段|随父级返回（历史分支）；字段含义见[持仓明细](fields/balances.md#position)|
 |`asset_series`|当日分时序列|array（object 元素）|—|分钟线记录，元素含 `datetime`、`minute_return`、`equity_long_returns`、`equity_short_returns`、`benchmark_return`、`active_return`、`adjusted_net_value`；其余键随服务端序列结构|恒返回（盘中分支）；它描述当天盘中变化，不是某个业务日的日终结果|
 |`asset_series[].minute_return_on_close`|按收盘价计的分钟收益|number / null|—|基于昨日收盘价的收益率列|由数据决定：仅当产品或组内产品持有期货/期权时返回，否则该键整体不出现|
@@ -279,17 +290,16 @@ Python 签名：`rqamsh.balances.previous_summary(resource: str)`。
 |---|---|---|---|
 |`resource`|`str`|必填|唯一产品或产品组 ID/名称。|
 
-返回：服务端原始概览对象，不含 `positions`，并按服务端规则附带 `benchmark_returns` 与 `excess_returns`。
+返回：服务端原始概览对象，不含 `positions`，并按服务端规则附带 `benchmark_returns` 与 `excess_returns`；其余净资产与收益字段见[报表顶层字段](#top-level-fields)。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |（根对象）|返回根|object|—|上一交易日的头寸概览对象|恒返回；不含 `positions`，需要持仓明细时改用 `get`|
 |`date`|业务日期|string / null|YYYY-MM-DD|该概览归属的业务日期|恒返回；日期由服务端按上一交易日决定，本操作不接受日期参数|
-|`total_equity`|净资产|number / null|—|概览字段之一；`total_assets`、`total_liabilities`、`units`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns` 等字段与单日报表顶层字段同名同义，逐项见[上一交易日概览](fields/balances.md#previous-summary)|随父级返回|
 |`benchmark_returns`|基准收益|number / null|—|该业务日的基准收益|恒返回；服务端按上一交易日规则计算|
 |`excess_returns`|超额收益|number / null|—|当日收益减基准收益|恒返回；与 `benchmark_returns` 同时给出|
 
-结果检查：核对返回的概览字段与业务日期归属；需要持仓明细时改用 `get`，本操作不返回 `positions`。网关最低读取级别为 `read_net_value`。
+结果检查：核对返回的概览字段与业务日期归属；需要持仓明细时改用 `get`，本操作不返回 `positions`。最低读取级别为 `read_net_value`。
 
 ```python
 result = rqamsh.balances.previous_summary(resource='授权测试产品')
