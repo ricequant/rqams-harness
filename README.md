@@ -18,16 +18,18 @@ rqamsh schema
 
 ## 认证与连接
 
-地址省略时默认连接 RQAMS 官方地址 `https://www.ricequant.com`；私有化部署用 `--base-url` / `base_url` / `RQAMSH_BASE_URL` 覆盖。认证只有 Bearer 令牌，随每个请求发送；令牌由 AMS 平台或管理员签发。
+未指定地址时优先使用已保存的部署地址，没有保存地址才连接 RQAMS 官方地址 `https://www.ricequant.com`；首次连接私有化部署或切换部署时用 `--base-url` / `base_url` / `RQAMSH_BASE_URL` 指定目标地址。完整地址优先级见[建立连接](docs/connection.md#建立连接)。认证只有 Bearer 令牌，随每个请求发送；令牌由 AMS 平台或管理员签发。
 
-Agent 和自动化场景优先从权限受限文件或运行环境读取令牌，不要把令牌贴进对话、命令参数或日志：
+**本机首次使用默认由 Agent 发起网页登录。** 安装与离线 `schema` 检查后，Agent 应继续执行用户需要的首个 CLI 只读查询；没有已保存或已提供的令牌时，命令会打开本机页面，用户在页面填写 key（Bearer 令牌），校验并保存后继续原查询。不要停在“请提供 token”，也不要让用户把 key 贴进对话。完整首次使用流程见[Agent 使用引导](docs/guide.md#使用方式用户说业务agent-读文档)。
+
+已有登录设置直接复用；需要重新登录时由 Agent 执行 `rqamsh auth`。默认地址和空间不必让新用户手工填写。Python 的 `rqamsh.init()` / `Client` 不会自动打开登录页，首次使用 Python 前先完成 CLI 登录，再省略 `token` 复用设置。
+
+仅在明确的远程、无图形或无人值守环境中，设 `RQAMSH_AUTO_LOGIN=0`，从权限受限文件或运行环境注入令牌。Agent 调用命令、捕获输出或非交互终端本身不代表没有本机浏览器。令牌不要进入对话、命令字面参数或日志：
 
 ```console
 rqamsh --token @token.txt products list
 # 或由运行环境注入 RQAMSH_TOKEN
 ```
-
-人工首次使用可以直接运行业务命令；没有可用令牌时，CLI 会尝试打开浏览器页面让用户输入令牌，保存后继续原命令。无图形界面或远程运行时不要走这条路径，改用 `--token @文件` / `RQAMSH_TOKEN`。需要重新登录时运行 `rqamsh auth`。
 
 令牌关联用户而不是某个空间：同一用户可以属于多个工作空间，`rqamsh workspaces list` 读取自己的成员空间。未指定目标空间时，先沿用设置文件里保存的最后空间；没有保存空间就使用服务端成员列表首项（按服务端原序取第一项，不排序、不按 AMS 权益筛选），一个成员空间都没有时直接报错。首项缺少所需权益由服务端拒绝，不会自动换下一个；需要读其他分区时用 `--workspace-id` 或 `workspaces use`。选择空间只改请求路由，能否读写仍由服务端按成员关系、AMS 权益与资源权限判定，不要通过修改请求头扩大授权。令牌、设置文件与工作空间规则见[连接、身份、错误与等待](https://github.com/ricequant/rqams-harness/blob/dev/docs/connection.md)，成员空间的读取与选择见[工作空间](https://github.com/ricequant/rqams-harness/blob/dev/docs/workspaces.md)。
 
