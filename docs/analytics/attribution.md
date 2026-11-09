@@ -1,6 +1,14 @@
 # 业绩归因 analytics
 
-归因把区间收益拆解到基准、行业与风格等维度：先提交归因任务，再按归因 ID 读取结果，需要归档时导出工作簿；实时截面走 `realtime_factor_exposure` 与 `realtime_risk_attribution`。归因结果是服务端算好的分析结果，不是新的估值数据；指标口径见[净值与收益指标](metrics.md#indicators-returns)。
+归因用于解释收益、风险在基准、行业与风格等维度上的分解；历史分析与实时分析是不同产物，按问题选择入口：
+
+|用户问题|操作入口|职责与时间范围|
+|---|---|---|
+|指定历史某一天或一段区间，分析收益来源与风格|[`create_attribution`](#create_attribution) → [`attribution`](#attribution)；已有归因 ID 直接读取|显式指定起止日期、基准与分解方式，读取该归因记录的结果；需要归档时用 [`export_attribution`](#export_attribution)|
+|今天的收益、风险和行业贡献如何分解|[`realtime_risk_attribution`](#realtime_risk_attribution)|当天实时归因，包含因子归因与行业归因；不能指定历史日期，也不是常规风险指标摘要|
+|当前风格暴露是什么、盘中如何变化|[`realtime_factor_exposure`](#realtime_factor_exposure)|实时因子主动暴露序列，不是收益贡献，也不能指定历史日期|
+
+历史与实时接口各司其职：不能用当前结果回答历史日期，也不必为了当前截面新建历史归因。比较两类结果前，核对分析对象、业务日期、基准、模板、权重与暴露口径；归因记录的分析区间与底层暴露日期分别按返回字段解释，不能只取数组末行或仅凭日期相同就直接相减。归因结果不是新的估值数据；常规风险指标与收益口径见[净值与收益指标](metrics.md#indicators-returns)。
 
 本页是 [analytics 总览](index.md) 的子页：用户需求与完成条件见[总览的场景表](index.md#从用户需求到操作)，`resource`/`resources` 语义与阻塞式调用等公共约定见[总览](index.md#api-使用约定)；本页涉及的外部数据调用与官方页面见 [RQData 官方调用来源](../rqdata.md#rqdata-calls)。
 - `attribution` 与 `export_attribution` 依赖已存在的归因 ID；删除归因按 ID 直接删除，平台要求 `read_position`，权限不足时以服务端错误返回。

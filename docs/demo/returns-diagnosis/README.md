@@ -153,7 +153,7 @@ record = rqamsh.trades.get(resource="<P 的产品 ID>", trade_id="<记录 _id>")
 
 ## 第 6 步：计划卡与授权范围
 
-通用模板与授权流程以指南的[写操作计划卡](../../guide.md#6-写操作计划卡)为准；下面只填本例这一条日期更正的对象、证据与读回范围。
+通用边界见[写入范围与授权](../README.md#6-写操作计划卡)；下面只填本例这一条日期更正的对象、证据与读回范围。
 
 ```text
 对象：示例产品 R（<P 的产品 ID>），账户“示例交易账户”
@@ -214,7 +214,7 @@ day_16 = rqamsh.balances.get(
 
 ## 交付什么
 
-回答结构统一按指南的[结果翻译](../../guide.md#7-结果翻译)，不再复制通用交付清单。本例应把两件事分开说明，下面是**构造结论示例，不是执行回执**：
+回答结构见[业务交付](../README.md#7-结果翻译)，不再复制通用交付清单。本例应把两件事分开说明，下面是**构造结论示例，不是执行回执**：
 
 > 6 月区间收益约 4%，用户手算的约 4.6% 使用了成立时的初始资金，而不是本区间基点。06-30 股票上涨 2%，但现价仍低于含费成本，因此持仓浮亏 14,000 元；产品当日收益约 0.8432%。这三件事不矛盾。
 >
@@ -259,6 +259,6 @@ day_16 = rqamsh.balances.get(
 - [净值与收益指标](../../analytics/metrics.md#indicators-returns)、[指标输入与日历](../../analytics/metrics.md#indicator-inputs)、[analytics 总览](../../analytics/index.md)
 - [流水操作](../../trades.md#update)、[流水字段](../../fields/trades.md#trade)、[交易类型对头寸的影响](../../trades.md#transaction-type-effect)
 - [计算状态](../../products.md#compute_state)、[产品数据源](../../fields/products.md#data-source)、[份额事件](../../unit_events.md#list)、[导入凭证](../../confirmations.md#list)、[资源权限](../../permissions.md#可见不等于可写)
-- [估值表覆盖](../../reconciliation.md#valuation-report-overwrite)、[等待与未就绪](../../connection.md#unready-inputs)、[业务翻译指南](../../guide.md#task-readiness)
+- [估值表覆盖](../../reconciliation.md#valuation-report-overwrite)、[等待与未就绪](../../connection.md#unready-inputs)、[任务完成条件](../README.md#task-readiness)
 
 同目录其他案例：[流水导入与历史更正](../historical-trade-correction/README.md)、[估值表导入与结果核对](../valuation-report-reconciliation/README.md)、[对账：从差异定位到业务修正](../reconciliation-controls/README.md)；对象尚未定位时先看[定位空间与目标产品](../workspace-routing/README.md)。

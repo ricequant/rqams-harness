@@ -11,6 +11,9 @@ recursive-include docs/demo/historical-trade-correction *.md *.py *.json *.csv *
 recursive-include docs/demo/valuation-report-reconciliation *.md *.py *.json *.csv *.xlsx
 recursive-include docs/demo/reconciliation-controls *.md *.py *.json *.csv *.xlsx
 recursive-include docs/demo/returns-diagnosis *.md
+include docs/demo/_report_common.py
+recursive-include docs/demo/product-briefing *.md *.py
+recursive-include docs/demo/live-product-scale *.md *.py
 prune tests
 prune local
 prune artifacts

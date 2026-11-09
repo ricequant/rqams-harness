@@ -41,7 +41,7 @@
 3. 估值表覆盖时，分类份额只覆盖已存在分类的相应字段：`null` 不覆盖，显式 `0` 覆盖，各字段独立；详见[分类份额](fields/balances.md#productsharevalue)。
 4. 对账前保存原报告、同日头寸与产品配置；导入后检查逐项错误和报告日期，再用 `products.compute_state` 等待估值就绪，并通过 `balances.get/series` 核对报告日及后续受影响日期。
 
-封账、静态会计与权限限制仍适用。关闭估值表覆盖或删除报告不是恢复某份旧结果的承诺；需等待重新计算并核对。**报告保存成功、重算完成、业务对账通过是三个不同结论。**
+`auto`、`undo_auto` 及[报告上传](valuation_reports.md#upload)按各自业务日期检查产品起始日与[封账日](products.md#set_closing_entry)：早于起始日或不晚于封账日时被拒绝。不能把这项逐日守卫套到所有覆盖变动：`mark`、[删除报告](valuation_reports.md#delete)以及切换产品的自动覆盖设置，不执行相同的逐日校验；权限与写入授权仍须满足。关闭估值表覆盖或删除报告不是恢复某份旧结果的承诺；需等待重新计算并核对。**报告保存成功、重算完成、业务对账通过是三个不同结论。**
 
 <a id="netting-derived-shadow-trades"></a>
 
@@ -113,7 +113,7 @@ Python 签名：`rqamsh.reconciliation.list(resources: list[str], *, start_date:
 |字段|含义|
 |---|---|
 |`date`|对账日期。|
-|`closed`|封账标记：该日不晚于产品封账日期时为 true（修改受封账限制）；未设封账日期为 false。|
+|`closed`|封账标记：该日不晚于产品封账日期时为 true；未设封账日期为 false。这是日期位置说明：人工标记 `mark` 仍可写，自动对账写入与撤销受封账限制。|
 |`auto_reconciled`|该日是否存在自动对账（估值表覆盖）记录。|
 |`unit_net_value`、`acc_unit_net_value`|该日有估值表时的净值对照 `{ams, valuation_report}`；没有估值表时不出现。|
 |`have_position_statement`|该日已有持仓单的资产单元 ID 数组；没有时不出现。|
@@ -296,7 +296,7 @@ Python 签名：`rqamsh.reconciliation.auto(resource: str, *, date: str)`。
 |`resource`|`str`|必填|产品唯一 ID 或名称。|
 |`date`|`str`|必填|对账日期 YYYY-MM-DD。|
 
-边界：当日没有估值表时服务端报错；日期早于产品起始日或处于封账限制范围时被拒绝。写入会改变该日及之后的估值结果，执行前保存原报告、同日头寸与产品配置并取得授权。
+边界：当日没有估值表时服务端报错；日期早于产品起始日，或已设封账日且日期不晚于封账日时被拒绝（见[封账日](products.md#set_closing_entry)）。写入会改变该日及之后的估值结果，执行前保存原报告、同日头寸与产品配置并取得授权。
 
 返回：空响应，客户端得到 `None`（服务端返回空串）。
 
@@ -320,7 +320,7 @@ Python 签名：`rqamsh.reconciliation.undo_auto(resource: str, *, date: str)`�
 |`resource`|`str`|必填|产品唯一 ID 或名称。|
 |`date`|`str`|必填|对账日期 YYYY-MM-DD。|
 
-边界：与 `auto` 相同，受产品起始日与封账限制。
+边界：与 `auto` 相同，早于产品起始日或不晚于封账日时被拒绝。
 
 返回：服务端原始 `{effect_count}`，即删除的覆盖记录数。
 

@@ -26,7 +26,7 @@
 
 ## 读写与权限边界
 
-通用授权与完成要求见指南的[写操作计划卡](../../guide.md#6-写操作计划卡)和[任务完成条件](../../guide.md#task-readiness)。本例额外限定同日替换、报告采用与脚本清理的范围，不能用通用“已授权导入”代替这些具体确认。
+通用边界见[写入范围与授权](../README.md#6-写操作计划卡)和[任务完成条件](../README.md#task-readiness)。本例额外限定同日替换、报告采用与脚本清理的范围，不能用通用“已授权导入”代替这些具体确认。
 
 - 读取：`products.get`、`valuation_reports.list/download`、`balances.get`、`confirmations.list/get`、`reconciliation.list`。对账读取按对账级权限授权（要求 `write`）。
 - 写入：`valuation_reports.upload/delete`、`reconciliation.auto/undo_auto`、`reconciliation.mark`，以及修改产品 `auto_overwrite`。本案例只计划替换 06-30 的报告记录；采用、删除和开关单独授权。

@@ -11,7 +11,7 @@
 
 Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与事件 ID；写入和删除须获得授权。读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
 
-日期为 YYYY-MM-DD，枚举传英文值，取值见[份额事件类型](fields/unit_events.md#uniteventtype)与[份额事件来源](fields/unit_events.md#uniteventsource)。事件日期不能晚于今天，也不能晚于产品到期日；申购与赎回必须且只能提供其中一个；份额产品必须填写 product_share，且该份额需在事件日期有效；估值报告数据源的产品不支持录入份额事件；封账与静态会计保护仍按事件日期判断，但 `create` 走的服务端批量接口不做封账日与起始日校验（见 [create](#create)）。
+日期为 YYYY-MM-DD，枚举传英文值，取值见[份额事件类型](fields/unit_events.md#uniteventtype)与[份额事件来源](fields/unit_events.md#uniteventsource)。事件日期不能晚于今天，也不能晚于产品到期日；申购与赎回必须且只能提供其中一个；份额产品必须填写 product_share，且该份额需在事件日期有效；估值报告数据源的产品不支持录入份额事件；修改与删除会按事件日期判断产品起始日与[封账日](products.md#set_closing_entry)，早于产品起始日或早于或等于封账日时被拒绝。`create` 是例外：本客户端统一走服务端批量接口，该校验只存在于单条录入路由，因此批量新增不校验起始日与封账（见 [create](#create)）。
 
 服务端批量接口接受的是 subscription_units / redemption_units，不接受 units 与 unit_event_type。本项目在客户端按同一规则折算后提交：
 
@@ -55,7 +55,7 @@ rqamsh unit-events list --resource "授权测试产品" --start-date 2026-01-01 
 
 服务端逐项处理：能解析的事件写入并计入 effect_count，解析失败的事件按序号写入 err_msg（缺少日期、日期格式错误、未指定申购/赎回份额），两者可以同时出现。约束违规不是逐项错误：申购与赎回同时给出、份额产品缺 product_share、估值报告数据源产品等会整批失败。批量接口不返回新记录 ID，插入后请用 `list` 取回。
 
-批量接口也不做封账日与起始日校验——那是单条录入才有的守卫，因此本方法允许写入落在封账日之前或产品起始日之前的日期，需要该保护时请先自行核对日期区间。
+批量接口也不做起始日与封账日校验——该守卫只存在于服务端单条录入路由，本客户端的 create 不走那条路由，因此本方法允许写入落在产品起始日之前或封账日当天及之前的日期；需要该边界时请先自行核对日期区间。
 
 Python 签名：`rqamsh.unit_events.create(resource: str, data: dict[str, Any] | list[dict[str, Any]])`。
 

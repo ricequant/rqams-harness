@@ -43,7 +43,7 @@
 
 Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品、事件 ID 与文件路径；写入、覆盖和删除须获得授权。读取要求 `read_import_data`，写入与文件导入要求目标产品 `write`；客户端不预判权限。
 
-日期为 YYYY-MM-DD；枚举传英文值，取值见[托管事件类型](fields/custodian_events.md#custodianeventtype)、[托管事件费用类别](fields/custodian_events.md#custodianeventcosttype)与[科目调整操作](fields/custodian_events.md#adjustoperation)。事件日期不能晚于产品到期日，封账与静态会计保护按出入账日期或权益生效日期判断，服务端拒绝时会说明具体原因。部分失败异常保留完整结果，不保证已写入内容回滚。
+日期为 YYYY-MM-DD；枚举传英文值，取值见[托管事件类型](fields/custodian_events.md#custodianeventtype)、[托管事件费用类别](fields/custodian_events.md#custodianeventcosttype)与[科目调整操作](fields/custodian_events.md#adjustoperation)。事件日期不能晚于产品到期日。新增、修改、删除与文件导入还会按事件的生效日期判断产品起始日与[封账日](products.md#set_closing_entry)边界：生效日期早于产品起始日、或早于或等于封账日时被拒绝（未设封账日时只受起始日下限）。生效日期取 `effective_date`，缺省取出入账日期；批量新增与批量删除按整批最早生效日期判断，修改按原事件与本次事件两者中较早的生效日期判断，文件导入逐行判断且越界行记入 `err_msg` 后跳过，其余有效行仍按覆盖写入。服务端拒绝时会说明具体原因。部分失败异常保留完整结果，不保证已写入内容回滚。
 
 ## list
 列出产品托管事件。
@@ -144,7 +144,7 @@ rqamsh custodian-events create --resource "授权测试产品" --input @events.j
 ## update
 按事件 ID 整体覆盖修改一个托管事件。
 
-服务端用旧 ID 覆盖写入本次请求构造的事件，因此**未提供的可选字段不会保留原值**：需要保留的字段必须随请求一起提交。事件类型的必填规则与 `create` 相同，封账判断取原事件日期与本次生效日期中较早的一个。
+服务端用旧 ID 覆盖写入本次请求构造的事件，因此**未提供的可选字段不会保留原值**：需要保留的字段必须随请求一起提交。事件类型的必填规则与 `create` 相同；起始日与封账判断取原事件与本次事件生效日期（`effective_date`，缺省取出入账日期）中较早的一个。
 
 修改一条原本带归属份额的产品分红时，必须显式提交 `product_share`；要把它改成无归属份额的比例分红，须显式传 `null`，不能靠省略字段实现——省略会因“未明确提供归属份额”被拒绝，而不是静默保留或转换。同日归属模式的互斥校验同样适用于修改（排除本条原记录后比对）。
 

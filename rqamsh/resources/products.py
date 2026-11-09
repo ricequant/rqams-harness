@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from ..errors import HarnessError
@@ -46,20 +47,56 @@ class Products(_Resource):
         """创建产品，服务端按数据源校验配置并可能初始化估值。
 
         Args:
-            data: 产品 JSON；必含 data_source、name、investment_category、
-                strategy_category、benchmark、calendar，其他必填字段依数据源而定。
+            data: 产品 JSON；必含 name、investment_category、strategy_category、benchmark、
+                start_date（提交初始化估值表时可由报告日期推导），其他必填字段依数据源而定。
+                省略 data_source 时用混合来源。
                 省略 report_name 时用 name 补齐；trade 与 trade_and_valuation_report 数据源
                 省略 unit_policy 时补 auto_prev_unit_net_value；混合数据源省略 auto_overwrite
-                时显式传 false。显式 unit_policy（含 None、非法值）交由服务端判定，账户不补造。
+                时显式传 false。交易型来源省略 accounts 时补普通 RQ 账户；账户子字段缺省时
+                名称用产品名加交易账号、账号用 RQ0000000001、broker 用 ricequant。
+                数据源、份额策略、账户及其子字段的显式值（含 None、空数组、非法值）
+                不覆盖，交由服务端判定。
         Returns:
             原始 product_id、err_msgs 等创建结果，不修改输入对象。
         """
         payload = dict(data)
+        payload.setdefault("data_source", "trade_and_valuation_report")
         if not payload.get("report_name") and payload.get("name"):
             payload["report_name"] = payload["name"]
         if payload.get("data_source") in {"trade", "trade_and_valuation_report"}:
             # 两类交易源都要求份额策略；只在键缺席时补安全默认，显式 manual/None/非法值不覆盖。
             payload.setdefault("unit_policy", "auto_prev_unit_net_value")
+            name = payload.get("name")
+            if isinstance(name, str) and name:
+                accounts = payload.get("accounts", [{}])
+                if isinstance(accounts, list):
+                    # 复制账户对象再补缺，不修改调用方的嵌套输入；显式 null/空数组保留。
+                    used_names = {account["name"] for account in accounts
+                                  if isinstance(account, dict) and isinstance(account.get("name"), str)}
+                    completed_accounts = []
+                    for index, account in enumerate(accounts, start=1):
+                        if isinstance(account, dict):
+                            account = dict(account)
+                            if "name" not in account:
+                                number = index if len(accounts) > 1 else 0
+                                while True:
+                                    suffix = f"交易账号{number or ''}"
+                                    prefix = name
+                                    if len(prefix) + len(suffix) > 50:
+                                        # 截短时保留完整产品名的摘要，避免长前缀相同的产品共用账户名。
+                                        digest = sha256(name.encode("utf-8")).hexdigest()[:16]
+                                        prefix = f"{name[:50 - len(suffix) - 17]}_{digest}"
+                                    candidate = f"{prefix}{suffix}"
+                                    if candidate not in used_names:
+                                        break
+                                    number += 1
+                                account["name"] = candidate
+                                used_names.add(candidate)
+                            account.setdefault("account_number", "RQ0000000001")
+                            account.setdefault("broker", "ricequant")
+                            account.setdefault("is_custodian", False)
+                        completed_accounts.append(account)
+                    payload["accounts"] = completed_accounts
         if payload.get("data_source") == "trade_and_valuation_report" and "auto_overwrite" not in payload:
             # 自动覆盖会把已保存报告写成估值表覆盖，默认必须是确定的 false，不能留空由服务端猜。
             payload["auto_overwrite"] = False

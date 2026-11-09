@@ -20,7 +20,7 @@ python -m pytest tests -q
 
 ## 本机联调：首次网页登录，后续复用身份
 
-本机首次联调由 Agent 主动执行 CLI 只读命令；缺身份时会打开本机登录页，用户在页面填写 key，保存到隔离用户目录的 `rqamsh_settings.json` 后继续原命令。不要把管理员签发 Bearer 令牌与代办账号密码登录混为一谈，也不要仅因工具捕获输出或非 TTY 就禁用浏览器。测试新用户流程时使用独立用户目录与 `RQAMSH_SETTINGS`，不要删除真实配置或卸载现有 Skill；完整首次使用流程见[Agent 使用引导](../docs/guide.md#使用方式用户说业务agent-读文档)。地址优先级见[建立连接](../docs/connection.md#建立连接)，未指定地址时优先沿用保存部署，没有保存地址才回退官方地址。已有身份时直接复用；也可先运行 `rqamsh auth`，或在明确远程、无图形或无人值守的探测脚本中显式注入令牌：
+本机首次联调由 Agent 主动执行 CLI 只读命令；缺身份时会打开本机登录页，用户在页面填写 key，保存到隔离用户目录的 `rqamsh_settings.json` 后继续原命令。不要把管理员签发 Bearer 令牌与代办账号密码登录混为一谈，也不要仅因工具捕获输出或非 TTY 就禁用浏览器。测试新用户流程时使用独立用户目录与 `RQAMSH_SETTINGS`，不要删除真实配置或卸载现有 Skill；按需接入见[接入与已有上下文](../docs/demo/README.md#使用方式用户说业务agent-读文档)。地址优先级见[建立连接](../docs/connection.md#建立连接)，未指定地址时优先沿用保存部署，没有保存地址才回退官方地址。已有身份时直接复用；也可先运行 `rqamsh auth`，或在明确远程、无图形或无人值守的探测脚本中显式注入令牌：
 
 ```python
 from rqamsh import Client

@@ -83,7 +83,7 @@ rqamsh valuation-reports list --resource "授权测试产品"
 ```
 上传默认 is_overwrite=False；同产品同日已有报告时拒绝（服务端文案：该产品在YYYY-MM-DD已存在估值表），除非该日位于 replace_dates 或显式 is_overwrite=True。replace_dates 是**允许覆盖的白名单**，不是要求删除这些日期全部报告；真实只处理当前上传报告日期。通过检查后按产品+日期 upsert报告，不是按positions逐条合并。
 
-source 默认open_api，允许manual/open_api/client_upload，取值见[估值报告来源](fields/valuation_reports.md#valuationreportsource)。日期不能晚于到期日；封账和静态会计保护仍适用。是否写入估值表覆盖输入并触发重算，按[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)判断。
+source 默认open_api，允许manual/open_api/client_upload，取值见[估值报告来源](fields/valuation_reports.md#valuationreportsource)。日期不能晚于到期日；也不能早于产品起始日，或在封账日及之前（未设封账日时只受起始日下限，见[封账日](products.md#set_closing_entry)）。是否写入估值表覆盖输入并触发重算，按[估值表覆盖设置](reconciliation.md#valuation-report-overwrite-setting)判断。
 文件应采用所属托管/估值机构受支持的模板，不能上传任意 Excel 并假定可解析。若无法确认模板兼容性，可按字段契约准备结构化报告；无论采用哪种方式，都须核对返回日期、净资产和持仓是否符合原始业务数据。
 
 ### 估值表级别与三级文件解析
@@ -156,7 +156,7 @@ replace_dates 仅放行上传文件实际日期的已有报告；并不删除白
 ## delete
 按日期删除估值报告、元数据和自动估值表覆盖头寸报表，并触发必要重算。
 
-删除参数是日期而非记录 ID，会处理对应报告、元数据和相关自动估值表覆盖记录。封账前的报告管理范围与估值影响范围可能不同，删除后分别核对报告列表及受影响日期头寸报表。
+删除参数是日期而非记录 ID，会处理对应报告、元数据和相关自动估值表覆盖记录；删除不做起始日与封账日校验，因此可删除范围与估值影响范围可能不同。删除后分别核对报告列表及受影响日期头寸报表。
 
 Python 签名：`rqamsh.valuation_reports.delete(resource: str, dates: list[str])`。
 

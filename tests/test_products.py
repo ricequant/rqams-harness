@@ -151,32 +151,69 @@ def test_compute_state_reads_state_without_waiting(service):
     assert len(state["requests"]) == 5
 
 
-def test_create_fills_required_unit_policy_for_trade_sources(service):
-    """交易与混合源省略 unit_policy 时按创建必填字段补自动份额，且不丢弃报告名/自动覆盖默认。"""
+@pytest.mark.parametrize("accounts", [[], None])
+def test_create_preserves_explicit_empty_or_null_accounts(service, accounts):
+    """明确空账户与错误的 null 不被缺省账户静默覆盖。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    client.products.create({"name": "显式空账户", "accounts": accounts})
+    assert json.loads(state["requests"][-1][2])["accounts"] == accounts
+
+
+def test_create_preserves_account_overrides_without_mutating_nested_input(service):
+    """补账户缺项时不篡改已提供的通道、账号、托管标记或调用方嵌套对象。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    payload = {"name": "显式账户", "data_source": "trade", "accounts": [
+        {"account_number": "REAL-001", "broker": "citic", "is_custodian": True},
+        {"name": "自选账户", "account_number": None, "broker": None},
+    ]}
+    original = json.loads(json.dumps(payload))
+    client.products.create(payload)
+    sent = json.loads(state["requests"][-1][2])
+    assert sent["data_source"] == "trade"
+    assert sent["accounts"][0]["account_number"] == "REAL-001"
+    assert sent["accounts"][0]["broker"] == "citic"
+    assert sent["accounts"][0]["is_custodian"] is True
+    assert sent["accounts"][1]["name"] == "自选账户"
+    assert sent["accounts"][1]["account_number"] is None
+    assert sent["accounts"][1]["broker"] is None
+    assert payload == original
+
+
+def test_create_generated_account_names_avoid_explicit_names(service):
+    """缺省账户名不能撞到显式账户，否则按名称选择会使用错误通道。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    client.products.create({"name": "产品", "accounts": [
+        {"name": "产品交易账号2", "broker": "citic"}, {},
+    ]})
+    accounts = json.loads(state["requests"][-1][2])["accounts"]
+    assert accounts[0]["name"] == "产品交易账号2"
+    assert accounts[0]["name"] != accounts[1]["name"]
+
+
+@pytest.mark.parametrize("name", ["产" * 47, "产" * 50])
+def test_create_generated_account_name_respects_server_length_bound(service, name):
+    """长产品名生成的缺省账户名仍在服务端五十字限制内。"""
+    client, state = service
+    state["responses"] = [(200, {"product_id": "p1"})]
+    client.products.create({"name": name})
+    account_name = json.loads(state["requests"][-1][2])["accounts"][0]["name"]
+    assert len(account_name) <= 50
+    assert account_name.endswith("交易账号")
+
+
+def test_create_long_product_names_do_not_collapse_to_same_account_name(service):
+    """同长前缀不同产品不能因截短共用账户名而触发空间唯一索引冲突。"""
     client, state = service
     state["responses"] = [(200, {"product_id": "p1"}), (200, {"product_id": "p2"})]
-    common = {
-        "name": "交易源产品", "start_date": "2026-01-01",
-        "investment_category": "equity", "strategy_category": "stock_long",
-        "benchmark": {"type": "index", "id": "000300.XSHG"}, "calendar": "exchange",
-    }
-    payloads = [
-        {"data_source": "trade", **common},
-        {"data_source": "trade_and_valuation_report", **common},
-    ]
-    originals = [dict(payload) for payload in payloads]
-    expected = [
-        {**common, "data_source": "trade", "report_name": "交易源产品",
-         "unit_policy": "auto_prev_unit_net_value"},
-        {**common, "data_source": "trade_and_valuation_report", "report_name": "交易源产品",
-         "unit_policy": "auto_prev_unit_net_value", "auto_overwrite": False},
-    ]
-    for product_id, payload, want in zip(("p1", "p2"), payloads, expected):
-        assert client.products.create(payload) == {"product_id": product_id}
-        # 精确比对实际 HTTP 请求体：只有补齐后的必填字段和客户端默认，没有账户等虚构配置。
-        assert json.loads(state["requests"][-1][2]) == want
-    assert all("unit_policy" not in payload for payload in payloads)
-    assert payloads == originals
+    names = []
+    for ending in ("A", "B"):
+        client.products.create({"name": "产" * 46 + ending})
+        names.append(json.loads(state["requests"][-1][2])["accounts"][0]["name"])
+    assert names[0] != names[1]
+    assert all(len(name) <= 50 for name in names)
 
 
 def test_create_keeps_explicit_unit_policy_without_mutating_input(service):

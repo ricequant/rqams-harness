@@ -72,7 +72,7 @@ rqamsh products get --resource "授权测试产品"
 
 ## create
 创建产品，服务端按数据源校验配置并可能初始化估值。
-完整字段及 accounts、benchmark、valuation_settings、exchange_rate_settings、shares 展开见 [产品字段](fields/products.md)。create 至少需要 data_source、name、investment_category、strategy_category、benchmark、start_date（基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)、交易日见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)）。calendar 可省略，省略时服务端建成 `exchange`；三个取值的含义见[估值日历](fields/products.md#calendartype)。start_date 对所有数据源都在运行期必填，缺席时服务端报「产品开始日期不能为空」，与按数据源的必填集合无关；份额策略的适用条件与客户端默认见[创建时的推荐起点](#创建时的推荐起点)。提交初始化估值表（init_valuation_report_file）时可省略 start_date，服务端取该估值表的日期，但已给的 start_date 不能晚于该日期。maturity_date 不能早于 start_date；trading_start_date 省略时取 start_date 且不能早于它。纯估值报告源由报告建立起点，不能上传交易流水。
+完整字段及 accounts、benchmark、valuation_settings、exchange_rate_settings、shares 展开见 [产品字段](fields/products.md)。create 至少需要 name、investment_category、strategy_category、benchmark、start_date（基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)、交易日见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)）。data_source 可省略，客户端采用混合来源；calendar 可省略，省略时服务端建成 `exchange`；三个取值的含义见[估值日历](fields/products.md#calendartype)。start_date 对所有数据源都在运行期必填，缺席时服务端报「产品开始日期不能为空」，与按数据源的必填集合无关；份额策略的适用条件与客户端默认见[创建时的推荐起点](#创建时的推荐起点)。提交初始化估值表（init_valuation_report_file）时可省略 start_date，服务端取该估值表的日期，但已给的 start_date 不能晚于该日期。maturity_date 不能早于 start_date；trading_start_date 省略时取 start_date 且不能早于它。纯估值报告源由报告建立起点，不能上传交易流水。
 
 <a id="calendar-support"></a>
 **日历选择：** 按业务要求的统计和日期对齐口径设置 `calendar`，不要仅因持有港股就改变整个产品的日历。日历的含义见[估值日历](fields/products.md#calendartype)，产品组的日历推导与权重组调仓限制见[组日历与计算边界](product_groups.md#group-calendar)。
@@ -81,11 +81,11 @@ rqamsh products get --resource "授权测试产品"
 
 ### 创建时的推荐起点
 
-服务端对少数字段有隐含默认，但默认不一定符合业务语义；例如省略 `label` 时当前服务端会落成 `paper`。下表是常见起点，供 Agent 在用户未指定时先做业务确认；只有标“客户端自动”的才是 `rqamsh` 实际补值，其余必须由调用方显式提交。
+服务端对少数字段有隐含默认，但默认不一定符合业务语义；例如省略 `label` 时当前服务端会落成 `paper`。只有标“客户端自动”的才是 `rqamsh` 实际补值，其余由调用方按业务提交。用户明确要求创建时，查重可直接执行，公开默认不需要逐项询问；真正缺少会改变业务含义的信息时，先展示完整创建配置，再按[创建授权规则](demo/README.md#6-写操作计划卡)一次确认。
 
 |字段|推荐写法|适用条件与注意事项|
 |---|---|---|
-|`data_source`|按资料选择：只有交易流水用 `trade`；只有估值报告用 `valuation_report`；两者都有用 `trade_and_valuation_report`|没有通用默认；数据源决定后续可导入的数据与必填字段|
+|`data_source`|未指定时用混合来源 `trade_and_valuation_report`；明确只有交易流水用 `trade`，明确只接估值报告用 `valuation_report`|客户端自动：仅省略该键时补混合来源；显式值不覆盖|
 |`label`|实盘产品显式传 `live`；模拟交易产品用[模拟交易](paper_trading.md)创建|省略时服务端当前落成 `paper`，不要依赖；`paper_trading` 不应通过通用 `products.create` 伪造|
 |`report_name`|与 `name` 相同|客户端自动：省略或空值时用产品名称|
 |`start_date`|真实首个业务日期|所有数据源都必填；不要用当天日期代替成立日|
@@ -94,7 +94,7 @@ rqamsh products get --resource "授权测试产品"
 |`unit_policy`|优先 `auto_prev_unit_net_value`；份额由外部系统直接维护时用 `manual`|`trade` 与 `trade_and_valuation_report` 必填；客户端自动：未提供该键时补 `auto_prev_unit_net_value`，显式 `manual`、`null` 或其他值不覆盖、交由服务端判定；纯 `valuation_report` 不补|
 |`auto_overwrite`|`false`|混合数据源推荐；客户端在省略时自动传 `false`；只有明确要自动采用后续估值表覆盖时才传 `true`|
 |`realtime_period_type`|`daytime`；估值表日盘后处理用 `valuation_day`|按实际监控时段选择|
-|`accounts`|真实账户：名称可用 `{产品名}_交易账号`，`is_custodian` 用 `false`，`account_number`、`broker` 填真实值|有交易流水时提供；不能编造账号或券商；模拟交易账户由专用创建操作生成|
+|`accounts`|用户未提供账户信息时使用默认：名称 `{产品名}交易账号`、账号 `RQ0000000001`、`broker=ricequant`（RQ 通道）、`is_custodian=false`|客户端自动：交易及混合来源省略该键时，在创建请求中补入一个默认账户；Agent 不因用户未提供账号而自行传 `[]` 或 `null`，也不从其他产品复制空账户配置。已提供账户对象只补缺失子字段。自动名称最长 50 字符，必要时缩短产品名前缀并附完整名称的摘要；多个账户加序号并避开本次请求内已有名称，不修改显式名称。工作空间内其他账户的同名冲突仍由创建结果报告，不自动改名重试。显式值（含 `[]`、`null`）不覆盖；纯估值来源不补。默认账号是逻辑标识，不是实际券商资金账号；导入真实券商文件前应配置匹配的通道和账号|
 |`benchmark`|真实业绩基准；常见宽基示例为 `{"type":"index","id":"000300.XSHG"}`|示例不是默认值；自定义基准用 `type=customized_index` 与基准 ID|
 |`investment_category`、`strategy_category`|按产品实际分类；权益类股票多头示例为 `equity`、`stock_long`|必填，没有通用默认；策略分类会影响指增等指标口径|
 |`valuation_settings`|ETF 常用 `etf=iopv`；含期货/期权时按会计口径用 `fut_opt=settlement`；累计净值按分红口径用 `acc_net_value=acc_unit_dividend`|不适用时不要填；服务端只默认 ETF 口径，其他空值不等于业务口径|
@@ -103,19 +103,19 @@ rqamsh products get --resource "授权测试产品"
 |`maturity_date`|无明确到期日时省略|服务端当前落 `2999-12-31`；不要用到期日表达策略期限|
 |`shares`|只有分类份额产品才填|没有多份额时省略；份额键只能是单个英文字母|
 
-创建最小交易源配置示例（供 create 的 data 使用；示例中的 `000300.XSHG` 是指数代码，校验见[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)；请替换名称、日期、账号与业务配置，并取得创建授权）：
+创建默认混合来源配置示例（供 create 的 data 使用；示例中的 `000300.XSHG` 是指数代码，校验见[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)；请按用户指令替换名称、日期与业务配置）：
 
 ```json
-{"name":"授权测试产品","label":"live","data_source":"trade","start_date":"2026-01-01","unit_policy":"auto_prev_unit_net_value","investment_category":"equity","strategy_category":"stock_long","benchmark":{"type":"index","id":"000300.XSHG"},"calendar":"exchange","accounts":[{"name":"授权测试产品_交易账号","is_custodian":false,"account_number":"<真实账号>","broker":"ricequant"}]}
+{"name":"授权测试产品","label":"live","start_date":"2026-01-01","investment_category":"equity","strategy_category":"stock_long","benchmark":{"type":"index","id":"000300.XSHG"}}
 ```
 
-客户端默认值与真实账户要求见[创建时的推荐起点](#创建时的推荐起点)；需要模拟交易模板时按[模拟交易](paper_trading.md)创建，不通过通用产品配置补造。
+客户端补值及默认账户边界见[创建时的推荐起点](#创建时的推荐起点)；需要模拟交易模板时按[模拟交易](paper_trading.md)创建，不通过通用产品配置补造。
 
 Python 签名：`rqamsh.products.create(data: dict[str, Any])`。
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
-|`data`|`dict[str, Any]`|必填|产品 JSON；必含 data_source、name、investment_category、 strategy_category、benchmark，其他必填字段依数据源而定；calendar 可省略（默认 `exchange`）。|
+|`data`|`dict[str, Any]`|必填|产品 JSON；必含 name、investment_category、strategy_category、benchmark，起始日要求及其他必填字段依上文规则；data_source、账户及其他缺省规则见[推荐起点](#创建时的推荐起点)。|
 
 返回：服务端创建结果，含 `product_id` 与 `err_msgs`；`err_msgs` 非空即抛部分失败异常。
 
@@ -236,7 +236,7 @@ Python 签名：`rqamsh.products.compute_state(resource: str)`。
 |`state`|计算状态|string|—|服务端当前返回的表征计算状态的字段与取值|由数据决定；客户端原样透传，不校验取值、不补齐默认值，也不保证该键存在；与产品状态 `product_state` 不是同一枚举|
 |`execution_id`|计算任务执行序号|integer / null|—|服务端计算任务的执行序号，用于区分同一产品的不同次计算|由数据决定；只读，客户端原样透传，不补齐缺失值|
 
-结果检查：把返回状态与后续读取的头寸报表结合判断，状态未就绪时不要把相关估值当作已完成结果；内容未就绪时调用方需要稍后重查——重查的是 `compute_state` 这一次操作本身，而不是重新提交重算或其他操作，并保留 `execution_id` 作为诊断。此操作只查询一次状态，不等待、不轮询。
+结果检查：历史估值任务尚未完成时，调用方可稍后重查 `compute_state`，保留 `execution_id` 作为诊断，不重新提交重算。历史估值任务正常完成、状态为 `normal` 后，实时截面仍可能在按需准备；此时应读取所需的单产品实时 `balances.get` 结果，由客户端处理 HTTP 202 自动轮询，而不是只反复查询状态。等待结束仍未取得结果时交付缺口与排查方案，不再外层盲目重试；见[实盘规模案例](demo/live-product-scale/README.md#normal-realtime-wait)，通用停止条件见[未就绪与缺输入](connection.md#unready-inputs)。此操作自身只查询一次状态，不等待、不轮询。
 
 ```python
 result = rqamsh.products.compute_state(resource='授权测试产品')
