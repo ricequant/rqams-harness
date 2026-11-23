@@ -26,7 +26,7 @@
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与日期；写入、覆盖和删除须获得授权。读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)，权限见[最低权限级别](permissions.md#逐操作最低权限级别)。替换示例产品与日期；写入、覆盖和删除须获得授权。
 
 日期为 YYYY-MM-DD。写入按产品与日期 upsert：同一日期再次写入是整体覆盖，不是按持仓逐条合并，因此提交内容必须是该日完整的持仓集合。当日的估值表覆盖优先级更高，被跳过的日期会出现在 error_messages 中并触发部分失败异常；成功写入的日期会生成一张来源为 PositionsSheet 的导入凭证，可用 `confirmations.latest('PositionsSheet')` 核对。
 

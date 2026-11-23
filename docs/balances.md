@@ -28,7 +28,7 @@ Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连�
 - 日期必须是严格的 `YYYY-MM-DD`；未来日期、时间戳和无效日期在客户端以 `invalid_argument` 拒绝。
 - 实时结果的实际业务归属以返回值为准。夜盘可能归属下一交易日，缓存的实时行情也可能早于请求时间；应同时检查返回日期、`update_time`，以及期货/期权是否已取到结算价（持仓 `has_settlement`，根级看 `all_futures_options_has_settlement`）；「结算」的四种含义见[结算类字段词义](fields/balances.md#settlement)。`has_settlement` 为 `false` 只表示这次返回里对应期货/期权合约还没有行情结算价（盘中普遍如此，日终才有），属行情状态，不等于整条结果未就绪——结果是否就绪看 `pending_valuation` 与 `error_messages`。需要结算价的口径据此标注本次结果不含结算价，等行情更新后重读同一操作；不依赖结算价的字段照常交付。两者都不得改用上一交易日概览替代当日结果。
 
-对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求会返回净值摘要。夜盘或周期未知的产品不会因传了当天日期而误用历史摘要：展示期货冲销项时返回不带日期的实时快照摘要；不展示时返回完整头寸视图，并要求头寸读取权限。返回形态由客户端按参数选择，不是额外的公开操作。
+对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求会返回净值摘要。夜盘或周期未知的产品不会因传了当天日期而误用历史摘要：展示期货冲销项时使用不发送请求日期的实时快照摘要；不展示时使用完整头寸视图。返回形态由客户端按参数选择，不是额外的公开操作。
 
 <a id="top-level-fields"></a>
 ## 报表顶层字段
@@ -122,14 +122,14 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 
 ### 返回形态与权限
 
-调用方只使用 `get`；下表说明不同请求条件返回的内容与最低读取级别（客户端不预判权限，越级由平台拒绝）：
+调用方只使用 `get`；先按下表确认返回形态，再查对应的[最低权限级别](permissions.md#逐操作最低权限级别)。
 
-|请求条件|返回内容|最低读取级别|
-|---|---|---|
-|产品<br>&emsp;过去日期<br>&emsp;`fields` 为下列简字段<br>&emsp;平铺、穿透、展示冲销项、未自定义基准|净值摘要|`read_net_value`|
-|明确日间周期产品<br>&emsp;当天或省略日期<br>&emsp;满足同一简字段和默认业务参数|实时净值摘要|`read_net_value`|
-|实时、展示期货冲销项，且不属于上面两行任一情形<br>&emsp;如 `fields=None`、`fields=['positions']`、夜盘或未知周期产品、产品组、自定义基准、成员视图|实时快照摘要|`read_net_value`|
-|任一条件：<br>&emsp;历史查询且不属于第一行（`fields=None`、产品组、`positions` 或其他字段、分类、不穿透、自定义基准、成员视图）<br>&emsp;实时且不展示期货冲销项|完整头寸视图|`read_import_data`|
+|请求条件|返回内容|
+|---|---|
+|产品<br>&emsp;过去日期<br>&emsp;`fields` 为下列简字段<br>&emsp;平铺、穿透、展示冲销项、未自定义基准|净值摘要|
+|明确日间周期产品<br>&emsp;当天或省略日期<br>&emsp;满足同一简字段和默认业务参数|实时净值摘要|
+|实时、展示期货冲销项，且不属于上面两行任一情形<br>&emsp;如 `fields=None`、`fields=['positions']`、夜盘或未知周期产品、产品组、自定义基准、成员视图|实时快照摘要|
+|历史查询且不属于第一行，或实时且不展示期货冲销项|完整头寸视图|
 
 简字段只有：`date`、`total_equity`、`total_assets`、`total_liabilities`、`units`、`unit_net_value`、`acc_unit_net_value`、`adjusted_net_value`、`daily_pnl`、`daily_returns`、`acc_unit_dividend`。字段含义和计算统一见[头寸字段字典](fields/balances.md#balance-calculation)。客户端根据资源和产品周期选择，调用方不能强制简字段返回形态；资源仍必须在当前身份授权范围内，详见[权限说明](permissions.md#可见不等于可写)。
 
@@ -149,7 +149,7 @@ rqamsh balances get --resource-or-resources '["授权测试产品", "授权测�
 |成员视图的资源不是产品组|资源类型校验失败|改用已授权的唯一产品组。|
 |数组形态传入日期、分类、基准或成员视图参数|`invalid_argument`|批量实时截面只支持 `fields`；需要这些参数时逐资源调用单资源形态。|
 |字段最早日期传产品组|资源类型校验失败|改用产品；组没有该字段口径。|
-|权限不足|来自平台|按上表申请 `read_net_value` 或 `read_import_data`；不要替换成猜测的资源 ID。|
+|权限不足|来自平台|按[最低权限级别](permissions.md#逐操作最低权限级别)核对，不要替换成猜测的资源 ID。|
 |服务端尚在处理、等待超时、字段缺失或 `null`|结果尚未就绪或数据不可用|按[未就绪与缺输入](connection.md#unready-inputs)保留诊断并报告缺口；不得补零或反复查询代替缺失输入。|
 
 过去日期的完整历史报表：

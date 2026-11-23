@@ -9,6 +9,7 @@ import sys
 import types
 import typing
 
+from ._docs import _locate_docs
 from .auth import login
 from .client import Client, DEFAULT_BASE_URL
 from .errors import HarnessError
@@ -111,6 +112,8 @@ def _parser():
     parser.add_argument("--poll-interval", type=float, default=1)
     blocks = parser.add_subparsers(dest="block")
     blocks.add_parser("schema", help="离线输出全部 API 签名、参数与说明")
+    docs = blocks.add_parser("docs", help="离线定位随 SDK 分发的文档，或同步至现有 Skill")
+    docs.add_argument("--skill-dir", type=Path, help="包含 SKILL.md 的 rqamsh 子技能目录")
     auth = blocks.add_parser("auth", help="在浏览器中输入令牌并保存到本机设置；未指定空间时保存成员列表首项")
     auth.add_argument("--auth-timeout", type=float, default=300, help="等待浏览器提交令牌的秒数")
     auth.add_argument("--no-browser", action="store_true", help="不自动打开浏览器，只在 stderr 输出登录地址")
@@ -196,6 +199,9 @@ def main(argv=None):
             return _run_auth(namespace)
         if namespace.block == "schema":
             _emit(schema(), sys.stdout)
+            return 0
+        if namespace.block == "docs":
+            _emit(_locate_docs(namespace.skill_dir), sys.stdout)
             return 0
         if namespace.block == "auth":
             return _run_auth(namespace)

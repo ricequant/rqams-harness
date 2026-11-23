@@ -41,7 +41,7 @@
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品、事件 ID 与文件路径；写入、覆盖和删除须获得授权。读取要求 `read_import_data`，写入与文件导入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)，权限见[最低权限级别](permissions.md#逐操作最低权限级别)。替换示例产品、事件 ID 与文件路径；写入、覆盖和删除须获得授权。
 
 日期为 YYYY-MM-DD；枚举传英文值，取值见[托管事件类型](fields/custodian_events.md#custodianeventtype)、[托管事件费用类别](fields/custodian_events.md#custodianeventcosttype)与[科目调整操作](fields/custodian_events.md#adjustoperation)。事件日期不能晚于产品到期日。新增、修改、删除与文件导入还会按事件的生效日期判断产品起始日与[封账日](products.md#set_closing_entry)边界：生效日期早于产品起始日、或早于或等于封账日时被拒绝（未设封账日时只受起始日下限）。生效日期取 `effective_date`，缺省取出入账日期；批量新增与批量删除按整批最早生效日期判断，修改按原事件与本次事件两者中较早的生效日期判断，文件导入逐行判断且越界行记入 `err_msg` 后跳过，其余有效行仍按覆盖写入。服务端拒绝时会说明具体原因。部分失败异常保留完整结果，不保证已写入内容回滚。
 
@@ -82,7 +82,7 @@ rqamsh custodian-events list --resource "授权测试产品" --start-date 2026-0
 
 Python 签名：`rqamsh.custodian_events.latest()`。
 
-返回：产品 ID 到最新日期字符串的映射（工作空间级读取，只需登录）；`{product_id}` 是动态键，不是实际 JSON 键名。
+返回：产品 ID 到最新日期字符串的映射；`{product_id}` 是动态键，不是实际 JSON 键名。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|

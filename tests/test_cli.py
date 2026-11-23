@@ -1,10 +1,46 @@
 """执行真实 CLI 子进程，验证输入和错误输出契约。"""
 
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 
 from test_client import catalog_routes, service
+
+
+def test_cli_docs_export_is_offline_and_preserves_skill(tmp_path):
+    """离线发现并同步当前包文档；保留技能正文，相同修订无需重装。"""
+    skill = tmp_path / "rqamsh"
+    skill.mkdir()
+    entry = skill / "SKILL.md"
+    entry.write_text("existing skill", encoding="utf-8")
+    command = [sys.executable, "-m", "rqamsh", "--token", "@missing", "docs"]
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    original = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", env=env)
+    assert original.returncode == 0, original.stderr
+    source = Path(json.loads(original.stdout)["path"])
+    assert (source / "index.md").is_file()
+    sync = [*command, "--skill-dir", str(skill)]
+    exported = subprocess.run(sync, capture_output=True, text=True, encoding="utf-8", env=env)
+    assert exported.returncode == 0, exported.stderr
+    result = json.loads(exported.stdout)
+    target = Path(result["path"])
+    assert target.is_relative_to(skill)
+    example = "demo/valuation-report-reconciliation/inputs/valuation-2026-09-25.xlsx"
+    assert (target / example).read_bytes() == (source / example).read_bytes()
+    again = subprocess.run(sync, capture_output=True, text=True, encoding="utf-8", env=env)
+    assert again.returncode == 0, again.stderr
+    assert json.loads(again.stdout) == result
+    assert entry.read_text(encoding="utf-8") == "existing skill"
+
+    altered = target / "index.md"
+    altered.write_text("unexpected local edit", encoding="utf-8")
+    conflict = subprocess.run(sync, capture_output=True, text=True, encoding="utf-8", env=env)
+    assert conflict.returncode != 0
+    assert conflict.stdout == ""
+    assert json.loads(conflict.stderr)["error"] == "docs_cache_conflict"
+    assert altered.read_text(encoding="utf-8") == "unexpected local edit"
 
 
 def test_cli_failure_is_json_on_stderr():

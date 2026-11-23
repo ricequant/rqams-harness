@@ -16,7 +16,8 @@
 ## API 使用约定
 
 Python 与 CLI 完成相同业务操作，连接与公共错误处理见[连接说明](connection.md)。替换示例中的产品、instrument_id 和文件路径；写入、覆盖和删除须获得授权。价格文件或 JSON 数组需按本页覆盖规则准备，不能把示例 ID 当作资产代码。
-权限：instrument_id 必须对应当前工作空间可访问的标的。产品归属标的需要产品可访问；修改/删除/价格导入另需写权限。无归属历史标的同空间可读但仅创建者可写（归属由服务端判定）；改归属时需同时具备原目标与新产品的相应权限。批量删除要求所有 ID 均匹配，越权由平台拒绝。客户端不预判读取级别。list 的 total 为可访问结果分页前数量；offset/limit 不可为负，limit=0 与省略均表示不限制条数。
+
+`instrument_id` 是当前工作空间内的自定义标的记录 ID，不是资产代码。从 [`list`](#list) 结果核对记录与归属产品后再操作。访问相关说明见[资源权限](permissions.md)。
 
 ## list
 查询当前工作空间自定义标的，列表不含公允价历史。
@@ -28,8 +29,8 @@ Python 签名：`rqamsh.custom_instruments.list(*, resource: str | None=None, as
 |`resource`|`str \| None`|`None`|可选归属产品唯一 ID 或名称；不支持产品组。|
 |`asset_class`|`str \| None`|`None`|按模式匹配的过滤条件，不做枚举取值校验；传非白名单值不会报错，只是可能匹配不到记录。|
 |`q`|`str \| None`|`None`|服务端名称或代码搜索字符串。|
-|`offset`|`int \| None`|`None`|分页起始偏移。|
-|`limit`|`int \| None`|`None`|单页数量。|
+|`offset`|`int \| None`|`None`|分页起始偏移，不可为负；省略从首条开始。|
+|`limit`|`int \| None`|`None`|单页数量，不可为负；`0` 或省略不限制条数。|
 
 返回：含 `customized_instruments` 与 `total` 的对象；列表不含公允价历史。
 
@@ -147,7 +148,7 @@ Python 签名：`rqamsh.custom_instruments.delete(instrument_ids: list[str])`。
 |---|---|---|---|---|---|
 |`effect_count`|实际删除条数|integer|条|本次实际删除的标的数|恒返回；客户端预检只保证 ID 在当前空间可见并能解析归属产品，真正删除约束由服务端执行，故 `effect_count` 可能小于提交条数，须用实际值核对本批结果，不承诺与提交条数相等；见[写入结果](connection.md#write-result)|
 
-操作检查：先逐项确认记录 ID、产品归属和删除授权，保存需要留存的价格历史。任一 ID 未匹配或未授权时先修正目标；成功后核对 effect_count 与 list，不能把部分未匹配记录当作已删除。
+操作检查：先逐项确认记录 ID、产品归属和删除授权，保存需要留存的价格历史。任一 ID 无法匹配当前空间记录时，客户端不提交整批删除；成功后核对 `effect_count` 与 `list`，不能把未匹配记录当作已删除。
 
 ```python
 result = rqamsh.custom_instruments.delete(instrument_ids=['0123456789abcdef01234567'])

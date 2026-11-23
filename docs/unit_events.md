@@ -9,7 +9,7 @@
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例产品与事件 ID；写入和删除须获得授权。读取要求 `read_import_data`，写入要求目标产品 `write`；客户端不预判权限。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)，权限见[最低权限级别](permissions.md#逐操作最低权限级别)。替换示例产品与事件 ID；写入和删除须获得授权。
 
 日期为 YYYY-MM-DD，枚举传英文值，取值见[份额事件类型](fields/unit_events.md#uniteventtype)与[份额事件来源](fields/unit_events.md#uniteventsource)。事件日期不能晚于今天，也不能晚于产品到期日；申购与赎回必须且只能提供其中一个；份额产品必须填写 product_share，且该份额需在事件日期有效；估值报告数据源的产品不支持录入份额事件；修改与删除会按事件日期判断产品起始日与[封账日](products.md#set_closing_entry)，早于产品起始日或早于或等于封账日时被拒绝。`create` 是例外：本客户端统一走服务端批量接口，该校验只存在于单条录入路由，因此批量新增不校验起始日与封账（见 [create](#create)）。
 

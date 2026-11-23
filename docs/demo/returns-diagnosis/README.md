@@ -168,7 +168,7 @@ record = rqamsh.trades.get(resource="<P 的产品 ID>", trade_id="<记录 _id>")
 
 授权按**已批准范围**执行：本任务批准的是这一条流水的日期更正、由此触发的必要重算，以及读回核对。删除、重录、改产品配置、采用或撤销估值表覆盖、批量改写其他记录，都需要另行授权，不因为“反正都是修错”就并进来。
 
-写前还要确认旧日 06-17 与新日 06-16 均未封账（`closing_date` 与 `reconciliation.list` 的 `closed`）、本人对该产品可写（`products.list` 的 `permissions` 行，`is_owner=true` 按最高级别处理），并先查一次 `compute_state` 记下 `execution_id` 作为基线，否则写后无法判断结果是不是新算出来的。只读身份若被对账状态接口拒绝，应明确该项未核验，不试探写入；各查询的级别见[最低权限要求](../../permissions.md#逐操作最低权限级别)。
+写前还要确认旧日 06-17 与新日 06-16 均未封账（`closing_date` 与 `reconciliation.list` 的 `closed`）、本人[可写该产品](../../permissions.md#可见不等于可写)，并先查一次 `compute_state` 记下 `execution_id` 作为基线，否则写后无法判断结果是不是新算出来的。只读身份若被对账状态接口拒绝，应明确该项未核验，不试探写入；各查询的级别见[最低权限级别](../../permissions.md#逐操作最低权限级别)。
 
 ## 第 7 步：执行、状态与读回
 

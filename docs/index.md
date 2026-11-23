@@ -150,8 +150,8 @@ AMS 的业务不是一组并列模块。它们围绕产品的一条流水线发�
 |[products](products.md)|产品配置/生命周期|产品 list/get/create/update/delete/recompute/compute_state/name_exists/field_exists/enable_shares/valuation_report_missing_dates/uploaded_file_hashes/set_closing_entry/clear_closing_entry/create_example|
 |[product_groups](product_groups.md)|成员组合与组配置|组 list/get/create/update/delete/recompute；不广播成员写入|
 |[asset_units](asset_units.md)|产品下资产单元，目前承载收益互换底层组合；绑定见[资产单元与收益互换持仓](asset_units.md#asset-unit-binding)|产品下 create/list；单元 get/update；list 可省略产品|
-|[tags](tags.md)|标签：产品与产品组的分组标注|list/upsert/delete；只需登录，写入与删除都是裸数组体|
-|[permissions](permissions.md)|产品或产品组的授权明细与分享|产品/组 list/grant/grant_many/revoke；批量只服务同一类型，`admin` 不能通过本接口授予|
+|[tags](tags.md)|标签：产品与产品组的分组标注|list/upsert/delete；写入与删除都是裸数组体|
+|[permissions](permissions.md)|权限级别、各操作访问要求及资源分享|产品/组 list/grant/grant_many/revoke|
 
 ### 输入数据
 
@@ -206,7 +206,9 @@ AMS 的业务不是一组并列模块。它们围绕产品的一条流水线发�
 - [其他数据结构与跨块口径](fields/others.md)
 - [RQData 官方调用来源](rqdata.md)
 
-## 口径速查：容易踩的十三条（一行一句，详情点权威页）
+<a id="口径速查容易踩的十三条一行一句详情点权威页"></a>
+
+## 口径速查
 
 判定与核算前先扫一眼这张表；每条只写结论，口径的完整说明在链接页，避免两处维护。
 
@@ -217,14 +219,11 @@ AMS 的业务不是一组并列模块。它们围绕产品的一条流水线发�
 |分类节点的行业基准|`shenwan_level_*`/`zx_level_*` 节点上的 `benchmark_returns`/`excess_returns` 是**当前行情快照**，与请求 `date` 无关；历史行业超额走归因|[头寸字段](fields/balances.md)|
 |风格暴露的"历史"|实时截面用 `realtime_factor_exposure`；逐日历史暴露走归因 `result.attribution.factor_exposure`（异步任务）|[业绩归因](analytics/attribution.md#create_attribution)|
 |扩指标只返回值|`extra_indicators` 白名单内的指标返回**只有值**，没有公式文本/版本/参数；白名单外的名字被静默忽略，不报错|[指标公式](analytics/metrics.md#indicators-returns)|
-|产品权限位|`products.list` 返回的 `permissions` 由 AMS 平台按请求人权限生成，客户端**不重算**；不要用本地权限推导判断可写性|[产品](products.md)|
-|成员空间不等于授权|`workspaces.list` 列的是当前用户所属空间，`use` 只改目标分区；能否读写由服务端按成员、AMS 权益与资源权限判定，不能靠改请求头扩大授权|[工作空间](workspaces.md#use)|
-|权限级别顺序|六个级别不是按名字排高低：`read_import_data`（三级）高于 `read_position`（二级）；操作要求的是下限，高级别可通过低级别要求的读取|[权限级别](permissions.md#权限级别)|
+|产品可见性与读写权限|核对当前身份、目标产品及操作所需级别|[资源权限](permissions.md)|
 |写入的必填与过滤|`products.create` 在所有数据源上运行期必填 `start_date`；`update` 没有字段白名单——提交未声明的键会直接报错，已声明的只读字段反而会被写入|[产品](products.md)|
 |导入流水的价格口径|`price` 填**不复权**实际成交价；持仓市值与净值按不复权行情算，用复权价导入会让买入金额与估值价格不同口径，凭空造出收益或亏损|[流水导入](trades.md#upload)|
 |名称与批量形态|`resource` 必须精确匹配 ID 或名称（不精确报「不存在或不可访问」，不做模糊匹配）；`balances.get` 的数组形态只接受 `fields`，`date`/`classifier`/`benchmark_id` 与非默认布尔参数传入即报 `invalid_argument`|[单字符串资源选择器](connection.md#单字符串资源选择器)|
 |周报窗口与分桶|`weekly_report` 的窗口是报告截止日所在自然周（周一非交易日顺延），起点随 `data.start_date` 下发；成员按策略分入 `market_neutral` 与 `index_enhanced`，策略为多重时全属中性类才进前者|[周报数据](analytics/portfolio_analysis.md#周报数据)|
-|授权批量形态|`grant_many` 一次只服务同一类型（产品与产品组不混批），批量项不接受 `permission_id`；改既有授权行的级别要用 `grant` 带该行 `id`|[资源权限](permissions.md)|
 
 ## 必要边界
 

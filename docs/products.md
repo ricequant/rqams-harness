@@ -377,7 +377,7 @@ rqamsh products valuation-report-missing-dates
 
 `file_type` 取值见[可校验文件类型](#hashablefiletype)。三类都会为请求到的产品返回条目，`hash_list` 为空数组表示该产品没有该类型的已上传哈希；唯一会缺席的是估值报告分支的数据源过滤——非估值报告数据源产品被排除，不返回条目。
 
-该操作不校验资源读取级别：他人产品只要在当前工作空间可见就能查询，不需要额外的导入数据或持仓读取权限。
+访问条件见[最低权限级别](permissions.md#逐操作最低权限级别)。
 
 Python 签名：`rqamsh.products.uploaded_file_hashes(product_ids: list[str], file_type: str)`。
 

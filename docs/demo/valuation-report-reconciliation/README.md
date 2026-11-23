@@ -28,10 +28,9 @@
 
 通用边界见[写入范围与授权](../README.md#6-写操作计划卡)和[任务完成条件](../README.md#task-readiness)。本例额外限定同日替换、报告采用与脚本清理的范围，不能用通用“已授权导入”代替这些具体确认。
 
-- 读取：`products.get`、`valuation_reports.list/download`、`balances.get`、`confirmations.list/get`、`reconciliation.list`。对账读取按对账级权限授权（要求 `write`）。
+- 读取：`products.get`、`valuation_reports.list/download`、`balances.get`、`confirmations.list/get`、`reconciliation.list`。
 - 写入：`valuation_reports.upload/delete`、`reconciliation.auto/undo_auto`、`reconciliation.mark`，以及修改产品 `auto_overwrite`。本案例只计划替换 06-30 的报告记录；采用、删除和开关单独授权。
-- 写权限看 `products.list` 的 `permissions`：按 `product_id` 匹配；`is_owner=true` 是创建者/空间管理员，按最高级别；遇到 `permission=forbidden` 先看 `is_owner`，不能一概判为不可读/不可写。不要用试探写入判断权限，也不要用全量 `products.list` 代替产品定位。
-- 读取报告/下载要求 `read_import_data`；导入/删除要求产品 `write`。权限不足、产品/日期/报告不能唯一确认时停止。
+- 按[资源权限](../../permissions.md)核对能否执行所需操作。权限不足或产品、日期、报告不能唯一确认时停止，不试探写入。
 - `workspaces.list()` 只列成员空间，不确认当前路由；需要选择时用 `workspaces.use(workspace="<成员空间 ID>")` 并核对返回 `id`。空间选择不授予产品权限。
 
 ## 第 1 步：定位产品、日期与采用设置

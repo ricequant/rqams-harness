@@ -14,7 +14,7 @@
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例单元、记录 ID 与文件路径；上传、覆盖和删除须获授权。先确认 broker 与文件模板匹配，单元资源不能填归属产品名称。
+Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)，权限见[最低权限级别](permissions.md#逐操作最低权限级别)。替换示例单元、记录 ID 与文件路径；上传、覆盖和删除须获授权。先确认 broker 与文件模板匹配，单元资源不能填归属产品名称。
 
 ## list
 读取资产单元持仓单，自动解析归属产品。
@@ -123,7 +123,7 @@ Python 签名：`rqamsh.positions_statements.download(resource: str, positions_s
 |`path`|落盘路径|string|绝对路径|本次实际写入的本地文件路径|恒返回；由 `output` 决定，不用服务端文件名；见[下载元数据](connection.md#download-result)|
 |`size`|文件字节数|integer|字节|本次实际写入的字节数|恒返回；`0` 不代表内容完整；见[下载元数据](connection.md#download-result)|
 
-交付检查：确认 output 是新文件且 `size` 与保存结果一致，打开文件核对日期与数量；抓取的是导入时保存的原始文件，不是按当前计算重新生成的报表。目标文件已存在时客户端直接报错，不覆盖既有文件。读取需要导入数据权限。
+交付检查：确认 output 是新文件且 `size` 与保存结果一致，打开文件核对日期与数量；抓取的是导入时保存的原始文件，不是按当前计算重新生成的报表。目标文件已存在时客户端直接报错，不覆盖既有文件。
 
 ```python
 result = rqamsh.positions_statements.download(resource='授权测试资产单元', positions_statement_id='0123456789abcdef01234567', output='statement.xlsx')

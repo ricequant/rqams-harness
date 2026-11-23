@@ -11,7 +11,7 @@
 历史与实时接口各司其职：不能用当前结果回答历史日期，也不必为了当前截面新建历史归因。比较两类结果前，核对分析对象、业务日期、基准、模板、权重与暴露口径；归因记录的分析区间与底层暴露日期分别按返回字段解释，不能只取数组末行或仅凭日期相同就直接相减。归因结果不是新的估值数据；常规风险指标与收益口径见[净值与收益指标](metrics.md#indicators-returns)。
 
 本页是 [analytics 总览](index.md) 的子页：用户需求与完成条件见[总览的场景表](index.md#从用户需求到操作)，`resource`/`resources` 语义与阻塞式调用等公共约定见[总览](index.md#api-使用约定)；本页涉及的外部数据调用与官方页面见 [RQData 官方调用来源](../rqdata.md#rqdata-calls)。
-- `attribution` 与 `export_attribution` 依赖已存在的归因 ID；删除归因按 ID 直接删除，平台要求 `read_position`，权限不足时以服务端错误返回。
+- `attribution` 与 `export_attribution` 依赖已存在的归因 ID。归因相关操作的权限见[最低权限级别](../permissions.md#逐操作最低权限级别)。
 
 ## create_attribution
 
@@ -122,8 +122,7 @@ Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str
 
 ## delete_attribution
 
-删除归因记录。
-- delete_attribution：按归因 ID 直接删除，返回 null；平台要求 `read_position`，客户端不预判权限。
+按归因 ID 直接删除记录，返回 `null`。
 
 Python 签名：`rqamsh.analytics.delete_attribution(resource: str, attribution_id: str)`。
 
