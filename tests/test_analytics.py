@@ -158,6 +158,23 @@ def test_create_attribution_omits_absent_keys_and_requires_template_or_decomposi
     assert "industry_standard" not in body and "only_returns_decomposition" in body
 
 
+@pytest.mark.parametrize("operation", ["create_attribution", "realtime_risk_attribution"])
+@pytest.mark.parametrize("benchmark", [
+    "000300.XSHG", "", "   ", 123, ",000300.XSHG", "index,", "index,   ",
+    "index,000300.XSHG,extra", "unknown,000300.XSHG", "INDEX,000300.XSHG",
+])
+def test_attribution_rejects_invalid_benchmark_before_resource_resolution(service, operation, benchmark):
+    """非法基准优先报参数错误，不为不存在的资源发请求或提交归因任务。"""
+    client, state = service
+    kwargs = {"benchmark": benchmark}
+    if operation == "create_attribution":
+        kwargs.update(start_date="2026-01-01", end_date="2026-02-01", template="equity/factor")
+    with pytest.raises(HarnessError) as error:
+        getattr(client.analytics, operation)("missing-product", **kwargs)
+    assert error.value.code == "invalid_argument"
+    assert state["requests"] == []
+
+
 def test_attribution_polls_without_resubmitting_computation(service):
     """归因查询以归因 ID 轮询，运行中不得重新提交计算任务。"""
     client, state = service

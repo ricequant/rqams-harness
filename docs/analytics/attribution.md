@@ -16,7 +16,7 @@
 ## create_attribution
 
 提交区间业绩归因计算，直接返回归因 ID。
-- create_attribution：基准必填且格式为「类型,代码」；模板与「仅收益拆解」至少给一个，都不给时无法确定分解方式。
+- create_attribution：基准必填且格式为「类型,代码」；类型为 `index`、`customized_index` 或 `yield_rate`，如 `index,000300.XSHG`。模板与「仅收益拆解」至少给一个，都不给时无法确定分解方式。
 
 Python 签名：`rqamsh.analytics.create_attribution(resource: str, *, start_date: str, end_date: str, benchmark: str, template: str | None=None, industry_standard: str | None=None, drilldown: bool=False, only_returns_decomposition: bool=False, need_market_value_weights: bool=False)`。
 
@@ -25,14 +25,16 @@ Python 签名：`rqamsh.analytics.create_attribution(resource: str, *, start_dat
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
 |`start_date`|`str`|必填|YYYY-MM-DD。|
 |`end_date`|`str`|必填|YYYY-MM-DD。|
-|`benchmark`|`str`|必填|「类型,代码」格式的基准。|
+|`benchmark`|`str`|必填|「类型,ID」格式，类型为 `index`、`customized_index` 或 `yield_rate`；只允许一个逗号，两段去首尾空白后都必须非空，类型区分大小写。|
 |`template`|`str \| None`|`None`|归因模板，取 `equity/brinson`、`equity/factor`、`equity/factor_v2` 之一；服务端按枚举校验，其他值直接失败。|
-|`industry_standard`|`str \| None`|`None`|行业分类标准，取 `sws`、`sws_second`、`citics`、`citics_second` 之一；省略时由服务端按模板决定。|
+|`industry_standard`|`str \| None`|`None`|行业分类标准，取 `sws`、`sws_second`、`citics`、`citics_second` 之一；省略时服务端在归因记录中填入 `sws`（申万一级），不随模板切换。|
 |`drilldown`|`bool`|`False`|是否对资产单元穿透。|
 |`only_returns_decomposition`|`bool`|`False`|是否只做收益拆解。|
 |`need_market_value_weights`|`bool`|`False`|是否同时返回市值权重。|
 
 返回：服务端新建的归因记录对象，只含归因 ID；提交成功只代表任务已排队，必须用 [`attribution`](#attribution) 轮询到终态。记录里服务端会把 `benchmark` 归一化为 `{"type": ..., "id": ...}`，并在未指定时填入默认行业分类标准。
+
+归因失败后，查询结果时的估值补算条件见[估值未就绪时如何恢复](#估值未就绪时如何恢复)。补算不是重试归因，旧归因 ID 不会自动恢复，也不要把失败终态与运行态或等待超时混淆。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
@@ -41,10 +43,12 @@ Python 签名：`rqamsh.analytics.create_attribution(resource: str, *, start_dat
 
 结果检查：`id` 只是任务标识；区间内没有产品交易日历时服务端直接拒绝提交，不要用重放创建来换取结果。提问的粒度就是提交的粒度：只要某一天的结果就按单日提交（区间、基准与模板一一对应），先提交大区间再改单日等于重新排队。
 
+本地校验：裸 ID、非字符串、空类型、空 ID、多余逗号和不支持的类型在资源解析及任何 HTTP 请求前报 `invalid_argument`；不自动给裸 ID 补 `index,`。合法值的类型与 ID 会去首尾空白后下发；基准是否存在、是否可访问及分析日期是否支持，仍由服务端判断。这项约束也适用于下面的实时风险归因，但不能套用到所有名称含 `benchmark` 的参数，例如 `balances.get` 的 `benchmark_id` 必须为纯 ID。
+
 ## attribution
 
 按归因 ID 查询归因结果。
-- attribution：运行中的归因会持续返回进行中状态，Harness 在同一查询操作重复读取，不会重新提交计算。
+- attribution：运行中由 Harness 重复读取同一归因 ID，不会自动调用 `create_attribution`。读取失败结果的副作用见下节。
 
 Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str)`。
 
@@ -52,6 +56,16 @@ Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str
 |---|---|---|---|
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
 |`attribution_id`|`str`|必填|`create_attribution` 返回的归因 ID。|
+
+### 估值未就绪时如何恢复
+
+历史归因依赖分析区间内的头寸链。读取失败结果时，若诊断为缺失估值，服务端逐个检查缺失资源：有已记录的估值错误就返回诊断，无已记录的错误就从缺失日期提交该资源补算；若诊断明确为「不触发重算」的估值未就绪分支，则只读取诊断，不提交补算。原归因仍为 `FAIL`，Harness 抛出 `task_failed`。提示中的“请稍后重新开始分析”指**估值就绪后重新创建归因**，不是继续查询原失败 ID。
+
+1. **确认失败原因并保留现场**：保存 `HarnessError.to_dict()`、原归因 ID、资源与完整创建参数。只有诊断确认属于估值未就绪时才走本节恢复路径；权限、参数、基准或模型计算错误不能靠同样重提解决，也不能仅按提示包含“计算中”就决定重试。
+2. **停止查询旧失败归因，等待其依赖就绪**：产品可用 [`products.compute_state`](../products.md#compute_state) 检查估值计算，再读取[历史头寸时序](../balances.md#series)，核验所需日期及持仓是否可读；产品组按组读取所需结果。产品计算状态正常不代替目标数据就绪，反复查询旧失败归因还可能再次触发估值补算。等待与诊断沿用[通用未就绪规则](../connection.md#unready-inputs)，受同一个用户任务的整体截止时间约束；缺输入或估值计算失败时报告原因，不盲等。
+3. **估值就绪后创建新归因**：在写入授权允许重新创建时，以相同资源、区间、基准、模板及其他选项调用 `create_attribution`，保存新返回的 `id`，再用 `attribution` 查询新 ID。旧归因仍保持失败，头寸补齐不会自动恢复它。不得为凑成功缩短区间、换模板或无界重提；新任务仍失败时按新的诊断处理，不自动循环创建。
+
+这条恢复路径只针对已经确认因估值未就绪而失败的历史归因，**不把所有 `task_failed` 都视为可重试**。归因仍在运行时继续查询原 ID；仅发生 `wait_timeout` 时保留原 ID、先确认原任务结果，不重新创建。已成功返回归因记录但缺少 `result` 的检查见下方“结果检查”，也不等同于本节的失败恢复。
 
 返回：任务成功后是服务端原样的归因记录对象，运行中则是任务状态对象（`status`、`progress`、`message`，见[任务终态 JSON](../connection.md#task-result)）；失败终态会抛出错误并保留服务端诊断。归因结果体的形状随参数变化：`only_returns_decomposition=True` 时 `result` 本身就是收益拆解数组，否则是按模板组织的对象（`result[].factor` 里的 `{资产类别}` 是资产类别中文名的占位，不是 JSON 键）；它由归因引擎产出、服务端原样返回（只不含导出附件与 Brinson 日度序列），下表只列服务端与导出实际读写的键，引擎版本变化可能带来其它键。
 
@@ -118,7 +132,7 @@ Python 签名：`rqamsh.analytics.attribution(resource: str, attribution_id: str
 |`result.attribution.sensitivity[].data[].t_statistics`|敏感度 t 值|number|—|该回归系数的 t 统计量|随父级返回|
 |`result.is_benchmark_weight_daily`|基准权重是否按日更新|boolean|—|按基准类型与权重来源判定；服务端不消费该键|由参数选择：`template` 为 `equity/brinson`、`equity/factor`、`equity/factor_v2` 之一时返回|
 
-结果检查：用 `_id` 做后续查询与导出；运行态由客户端在同一查询操作自动轮询到终态，不必重新提交；若已返回归因记录却缺 `result`，按同一归因 ID 重查该读取，不要重新提交 `create_attribution`，也不要把缺失当作空归因结果。
+结果检查：用 `_id` 做后续查询与导出；运行态由客户端在同一查询操作自动轮询到终态，不必重新提交；若已返回归因记录却缺 `result`，按同一归因 ID 重查该读取，不要重新提交 `create_attribution`，也不要把缺失当作空归因结果。若已明确失败且原因是估值未就绪，则按上方[恢复步骤](#估值未就绪时如何恢复)处理，不继续轮询旧失败 ID。
 
 ## delete_attribution
 
@@ -166,7 +180,7 @@ Python 签名：`rqamsh.analytics.realtime_risk_attribution(resource: str, *, te
 |---|---|---|---|
 |`resource`|`str`|必填|产品唯一 ID 或名称；不支持产品组。|
 |`template`|`str`|`equity/factor`|分解模板，取 `equity/factor` 或 `equity/factor_v2`；服务端在同一次任务内同时计算 Brinson 结果。|
-|`benchmark`|`str \| None`|`None`|可选基准。|
+|`benchmark`|`str \| None`|`None`|省略或 `None` 使用产品基准，不下发该参数；显式提供时须为「类型,ID」，类型为 `index`、`customized_index` 或 `yield_rate`，格式及本地错误规则同 `create_attribution`。|
 |`factor_industry_standard`|`str \| None`|`None`|因子模板下的[行业分类](https://www.ricequant.com/doc/rqdata/python/stock-mod#rqdata-API-get-instrument-industry-stockmod)标准。|
 |`brinson_industry_standard`|`str \| None`|`None`|Brinson 模板下的行业分类标准。|
 |`drilldown`|`bool`|`False`|是否对资产单元穿透。|
@@ -231,3 +245,6 @@ Python 签名：`rqamsh.analytics.realtime_factor_exposure(resource: str, *, tem
 
 结果检查：只有 `start`、`end` 时表示没有股票持仓或暴露度未就绪，不是零暴露；先核对是否确有股票持仓，确有持仓却只返回区间信息时，稍后重试同一读取。因子键名以实际返回为准，不要按模板名推断完整因子集合。
 
+时点以 `exposure_series[].datetime` 的实际记录为准，`end` 不是最后一条有效暴露记录的保证。比较多个产品时，先核对各自有效记录覆盖，并选择共同实际时点；不能用较晚的区间标签替代尚未返回的数据，也不能拿不同时点的末条记录直接合成。
+
+本操作只支持单产品，返回的是相对该产品基准的主动暴露，不是证券绝对暴露或产品组暴露。分析产品组时，直接按配置目标权重混合成员主动暴露不能证明组实际暴露：还需同刻的实际成员权重、同一因子模板和可对齐的基准。成员基准与组基准不一致时，必须有同口径基准暴露才能转换，不能靠目标权重消除差异。缺这些输入时可分别交付成员结果；若额外给参考组合，明确参考权重、共同实际时点、基准及限制，将严格组暴露列为未核验，不能据此宣称产品组风格检查已全部完成。没有用户限额或风控条款依据时，分析者选择的关注线不等于合规限额或违规判定。

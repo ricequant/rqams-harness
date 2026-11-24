@@ -12,6 +12,19 @@ from ._base import _Resource, _nonempty, _selector, _text
 _HOLDINGS_TEMPLATES = frozenset({"equity", "convertible", "futures", "option"})
 
 
+def _attribution_benchmark(value: str) -> str:
+    """校验归因基准类型与单个 ID，不推测类型或查询基准是否存在。"""
+    text = _text(value, "benchmark")
+    if text.count(",") != 1:
+        raise HarnessError("invalid_argument", "benchmark 必须为“类型,ID”格式，且只能包含一个逗号")
+    benchmark_type, benchmark_id = (part.strip() for part in text.split(","))
+    if benchmark_type not in {"index", "customized_index", "yield_rate"} or not benchmark_id:
+        raise HarnessError(
+            "invalid_argument", "benchmark 类型必须为 index、customized_index 或 yield_rate，且 ID 不能为空",
+        )
+    return f"{benchmark_type},{benchmark_id}"
+
+
 class Analytics(_Resource):
     """读取持仓分析、业绩归因、组合对比与交易分析结果。
 
@@ -279,7 +292,7 @@ class Analytics(_Resource):
             resource: 产品或产品组唯一 ID 或名称。
             start_date: 起始日期 YYYY-MM-DD，区间内必须含产品交易日历交易日。
             end_date: 截止日期 YYYY-MM-DD。
-            benchmark: 基准，格式为“类型,ID”，如 index,000300.XSHG。
+            benchmark: 基准“类型,ID”；类型为 index、customized_index 或 yield_rate，如 index,000300.XSHG；格式错误在资源解析前报 invalid_argument。
             template: 归因模板；与 only_returns_decomposition 至少提供一个。
             industry_standard: 行业分类标准。
             drilldown: 是否穿透到持仓层。
@@ -288,9 +301,7 @@ class Analytics(_Resource):
         Returns:
             服务端返回的任务标识对象；用 attribution 查询结果。
         """
-        _text(benchmark, "benchmark")
-        if "," not in benchmark:
-            raise HarnessError("invalid_argument", "benchmark 必须为“类型,ID”格式")
+        benchmark = _attribution_benchmark(benchmark)
         if template is None and not only_returns_decomposition:
             raise HarnessError("invalid_argument", "template 与 only_returns_decomposition 至少需要提供一个")
         body: dict[str, Any] = {
@@ -366,13 +377,15 @@ class Analytics(_Resource):
         Args:
             resource: 产品唯一 ID 或名称。
             template: 归因模板，默认 equity/factor；服务端只接受 equity/factor 与 equity/factor_v2，Brinson 结果在同一次任务内一并计算。
-            benchmark: 可选基准，格式为“类型,ID”；省略使用产品基准。
+            benchmark: 可选基准“类型,ID”；类型为 index、customized_index 或 yield_rate；省略使用产品基准，格式错误在资源解析前报 invalid_argument。
             factor_industry_standard: 因子模板的行业分类标准。
             brinson_industry_standard: Brinson 模板的行业分类标准。
             drilldown: 是否穿透到持仓层。
         Returns:
             服务端任务终态结果（首发 202 与 task_id，随后轮询）。
         """
+        if benchmark is not None:
+            benchmark = _attribution_benchmark(benchmark)
         return self._client.call(
             "GET", self._path(resource, {"product"}) + "/realtime_risk_attributions",
             params={
