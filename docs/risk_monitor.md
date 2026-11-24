@@ -74,6 +74,10 @@ Python 签名：`rqamsh.risk_monitor.create_clauses(clauses: list[dict[str, Any]
 - 市值权重、持仓数量权重类指标不能使用「小于」「小于等于」比较方式。
 - `level` 为 3 及以上时必须提供 `warning_urls`（Webhook 地址数组）。
 
+**创建推荐：** 普通新条款使用 `level=1`、产品级需求使用 `indicator_type="product"`、检查频率使用 `crontab_expression="0 */1 * * *"`（每小时整点，非每分钟），`warning_urls=[]`。这些值由调用方显式提交，SDK 不自动补；持仓级需求改用 `position`。作用产品/组、指标、比较方式和阈值必须由实际监控目标确定，不能用空字符串或 `null` 补齐；ST 与违规公告条款不传 `operation` 和 `value`。
+
+期货剩余交易日预警可采用专属起点：`indicator_type="position"`、`indicator="futures_maturity_trading_days"`、`level=2`、`operation="lte"`、`value=14`、`crontab_expression=["00 20 * * *"]`（北京时间每日 20:00）。这是可调整的预警配置，不代表已获授权替用户新增条款。三级预警仍需真实 Webhook，不能沿用空数组。
+
 比较方式必须使用服务端枚举，不能把符号、中文和枚举值当成可互换输入：
 
 |`operation`|含义|
@@ -161,7 +165,7 @@ Python 签名：`rqamsh.risk_monitor.realtime_warnings()`。
 |`warning_msgs`|预警消息|object|—|按消息键组织的预警与诊断，元素见下列消息字段|由数据决定；只收 2 级及以上条款的消息，没有消息时整个键不出现|
 |<a id="warning-message"></a>`warning_msgs.{消息键}`|单条消息|object|—|预警或不可评估诊断|由数据决定；动态消息键不是资源 ID|
 |`warning_msgs.{消息键}.datetime`|消息时间|string|服务端时间字符串|本次消息生成时间|随父级返回|
-|`warning_msgs.{消息键}.next_run_time`|下次运行时间|string|服务端时间字符串|该条款下一次计划评估时间|随父级返回；不保证届时已取得完整输入|
+|`warning_msgs.{消息键}.next_run_time`|下次运行时间|string|服务端时间字符串|该消息记录的下一次计划评估时间|随父级返回；调度按监控时段判断是否执行，即使运行，实时头寸读取失败也只产生不可评估诊断，不能把计划时间当作结果就绪时间|
 |`warning_msgs.{消息键}.warning_urls`|通知地址|array（string 元素） / null|—|条款配置的通知地址|随父级返回；无通知地址时可为 `[]` 或 `null`，不做本地归一|
 |`warning_msgs.{消息键}.type`|消息类型|string|—|服务端消息标签，取 `warning` 或 `error`|随父级返回；不能仅凭此标签区分阈值命中与不可评估，须结合正文及诊断原因|
 |`warning_msgs.{消息键}.message`|消息正文|string|—|风险命中或输入不可评估的说明|由数据决定|

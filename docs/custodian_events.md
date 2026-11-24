@@ -37,7 +37,13 @@
 
 [对账案例](demo/reconciliation-controls/README.md)展示现金、应收应付差异中如何区分真实业务事件与有凭证依据的科目调整。
 
-导入按产品整体覆盖：`upload_file` 对每个产品从文件内最早事件日期起先删除同产品既有事件，再写入文件内容，所以它是区间覆盖而不是增量追加。先导入再手工补录请在导入之后执行，否则补录会被下一次导入覆盖。
+[`upload_file`](#upload_file) 是按产品与日期区间覆盖，不是增量追加。手工补录应在导入后进行；再次覆盖同一区间时，把需要保留的补录一并放入文件。
+
+## 写入前核对
+
+先只读核对同产品、同日期的既有事件和业务凭证。向用户说明拟新增、修改、覆盖或删除的范围、出入账日与权益生效日、金额和科目，以及对现金、份额、净值和后续估值的影响；等用户确认后执行。写后先核对事件记录，再按受影响日期复查估值与份额。
+
+申购、赎回另需核对申赎开放日及单位净值。以确认的申赎资料为准；缺少资料时，用事件前最近有有效单位净值的产品头寸作为候选依据，已有明确开放日时按该日核对。采用候选值前说明开放日、净值来源日和按四位小数取值的口径，请用户确认；没有可靠依据就停在诊断，不用出入账日、前一自然日或服务端默认值替代业务确认。
 
 ## API 使用约定
 
@@ -101,6 +107,8 @@ rqamsh custodian-events latest
 ## create
 新增一个或多个托管事件。
 
+创建时事件类型、出入账日期、金额及归属份额按真实业务确定，不把空金额补成 `0`，也不自动采用选项首项。无备注时可省略 `remarks`；生效日期可按下述支持范围默认等于出入账日。赎回按金额或份额表达，按份额时须给真实 `redemption_units` 与净值，不能用空字段表示另一种模式；分类分红与比例分红的选择按本次业务目标确定。
+
 传入单个对象或其数组；两种写法发送完全相同的请求体（都是 JSON 数组），行为一致。必填字段只有 custodian_event_type 与 date，其余按事件类型要求：
 
 - 申赎事件（subscription_fund_received、redemption_paid）省略 sr_open_date 时取出入账日前一交易日，且不能晚于出入账日期；必须提供为正的 unit_net_value；份额产品必须填写 product_share。
@@ -124,7 +132,7 @@ Python 签名：`rqamsh.custodian_events.create(resource: str, data: dict[str, A
 |---|---|---|---|---|---|
 |`effect_count`|实际写入条数|integer|条|本批成功插入的托管事件条数|恒返回；批量接口不返回新记录 ID，须用 `list` 取回；见[写入结果](connection.md#write-result)|
 
-结果检查：effect_count 应等于提交的事件条数；条数不符时用 `list` 按同一日期区间核对实际落库内容。写入会触发必要的重算，返回成功不代表估值已完成，需要时再用 `products.compute_state` 确认计算状态。
+结果检查：`effect_count` 应等于提交的事件条数；用 `list` 按出入账日期核对实际保存的事件。新增从本批最早生效日提交重算，结果按[重算规则](index.md#valuation-recompute)验收。
 
 ```python
 import json
@@ -162,7 +170,7 @@ Python 签名：`rqamsh.custodian_events.update(resource: str, custodian_event_i
 |---|---|---|---|---|---|
 |`effect_count`|实际修改条数|integer|条|本次实际覆盖写入的事件条数|恒返回；ID 不属于该产品时服务端返回 404，不产生本返回；见[写入结果](connection.md#write-result)|
 
-结果检查：修改后用 `list` 复核完整字段，重点核对被覆盖掉的调整项、费用类型与备注是否符合预期；不要在未读取原值的情况下局部提交。
+结果检查：修改后用 `list` 复核完整字段，重点核对被覆盖掉的调整项、费用类型与备注是否符合预期；不要在未读取原值的情况下局部提交。即使内容未变，也会从原事件和新事件中较早的生效日期提交重算。
 
 ```python
 result = rqamsh.custodian_events.update(
@@ -186,13 +194,14 @@ Python 签名：`rqamsh.custodian_events.delete(resource: str, custodian_event_i
 |`resource`|`str`|必填|产品唯一 ID 或名称。|
 |`custodian_event_ids`|`list[str]`|必填|非空事件 ID 数组；空数组在发送前即被拒绝。|
 
-返回：服务端原始结果，命中计数以实际响应为准。
+返回：服务端原始删除结果。只删除目标产品内命中的事件，重复 ID 不重复计数；只要有命中且日期校验通过，就从命中事件的最早生效日提交重算。全部未命中不删除、不提交重算；这个分支当前返回 `deleted_count: 0`，而不是 `effect_count: 0`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|本次实际删除的事件条数|由数据：服务端原始结果，命中计数以实际响应为准，见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|本次实际删除的事件条数|有命中并通过日期校验时返回；见[写入结果](connection.md#write-result)|
+|`deleted_count`|未命中时的删除条数|integer|条|固定为 `0`|仅所有 ID 都未命中目标产品时返回，此时不含 `effect_count`|
 
-结果检查：删除前用 `list` 确认 ID 与日期；删除不可撤销，会触发必要重算。
+结果检查：删除前用 `list` 确认 ID 与日期并保存原事件。删除不可撤销；返回后用 `list` 核对目标记录，有提交重算时另核对估值结果。
 
 ```python
 result = rqamsh.custodian_events.delete(resource='授权测试产品', custodian_event_ids=['6a1f4c2e9b3d4f5a6b7c8d90'])
@@ -221,7 +230,7 @@ rqamsh custodian-events delete --resource "授权测试产品" --custodian-event
 |归属份额|可选|`product_share`|份额产品的申赎事件必填|
 |赎回数量|可选|`redemption_units`|仅赎回款出账使用|
 
-文件列与事件字段不同名是正常现象：解析时按上表换算，问题行按行号进入 `err_msg`。
+文件列与事件字段不同名是正常现象：解析时按上表换算，逐行校验错误按行号进入 `err_msg`。
 
 两个列的取值有固定名单，写文件时照抄：
 
@@ -239,9 +248,13 @@ rqamsh custodian-events delete --resource "授权测试产品" --custodian-event
 |管理费、托管费、业绩报酬、运营费、销售服务费、签约费（见[托管事件费用类别](fields/custodian_events.md#custodianeventcosttype)）|产品费用实付|
 |科目中文名：活期存款、结算备付金、存出保证金、证券清算款、应收股利、其他应收利息、应收申购款、其他应收款、其他资产、现金类负债、其他应付利息、计提管理费、计提销售服务费、计提托管费、计提业绩报酬、计提运营费、应付税、其他应付款、其他负债|科目调整与份额净资产调整，对应字段是 `adjust_target`|
 
-不在名单内的类型名或科目名会让该行解析失败并写入 `err_msg`，同一文件的合法行仍会写入；文件缺少必填列则整批被拒绝。
+不在名单内的类型名或适用该字段的科目名会让该行解析失败并写入 `err_msg`。非空数据表缺少必填列，或同一产品同一确认日的分红归属模式冲突时，整份文件在覆盖前被拒绝。
 
-导入是覆盖式的：对每个产品，服务端从文件内最早事件日期起删除该产品既有事件后再写入，因此文件必须包含该日期起的全部事件。解析失败的行进入 err_msg 并同时作为失败项记入凭证；合法行仍会写入，不整批回滚。
+对每个至少有一条有效行的产品，取这些行中最早的**生效日期**作为覆盖起点，先删除该产品**出入账日期**在起点当天及以后的既有事件，再写入该产品的有效行，并从该起点提交重算。没有有效行的产品不删除、不写入、不提交重算，也不生成凭证。
+
+覆盖起点不一定是最早受影响的估值日。用备份检查被移除或改写的旧事件：若其旧生效日早于自动重算起点，需核对[封账边界](products.md#set_closing_entry)，在取得授权后用 [`products.recompute`](products.md#recompute) 从最早受影响日补算，再核对估值。
+
+有逐行错误时，返回的 `err_msg` 及已生成的凭证记录这些错误；有效行已保存，被覆盖的旧事件不会因客户端抛出 `partial_failure` 而恢复。先对照备份与现存事件；如需重传，按修正后文件重新确定各产品的覆盖起点。若起点提前，须按授权补齐新增覆盖区间的备份，且重传文件须包含从新起点起应保留的全部事件。若只需补录确认未写入的事件，另用 [`create`](#create)，不要只把失败行交给覆盖导入。
 
 Python 签名：`rqamsh.custodian_events.upload_file(resources: list[str], file_path: str)`。
 
@@ -256,9 +269,9 @@ Python 签名：`rqamsh.custodian_events.upload_file(resources: list[str], file_
 |---|---|---|---|---|---|
 |`effect_count`|实际写入条数|integer|条|本批合法行写入的托管事件条数|恒返回；导入按产品覆盖写入，此数不含解析失败行|
 |`err_msg`|逐行解析失败说明|array（string 元素）|—|按行说明哪一行为何失败，形如「第N行: …」|恒返回；无失败行时为空数组，非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
-|`confirmation_ids`|导入凭证 ID|array（string 元素）|—|本次为每个涉及产品生成的凭证 ID|恒返回；可用 `confirmations.list` 核对登记条数，用 `confirmations.download` 取回源文件|
+|`confirmation_ids`|导入凭证 ID|array（string 元素）|—|本次为每个写入有效行的产品生成的凭证 ID|恒返回；没有写入有效行时为空数组；可用 `confirmations.list` 核对登记条数，用 `confirmations.download` 取回源文件|
 
-结果检查：先核对 err_msg 中每一行的原因，再用 `confirmations.list` 或 `confirmations.latest('CustodianEvents')` 确认凭证与登记条数，需要时用 `confirmations.download` 取回源文件复核。客户端不预判权限：成员不存在或有歧义时请求不会发出，越权由平台拒绝。
+结果检查：导入前按各产品覆盖起点保存旧事件并核对文件是否包含该起点后应保留的全部事件。收到正常或部分失败回执后，核对 `err_msg`、`confirmation_ids` 与登记条数，再用 `list` 读回覆盖区间；有写入的产品另核对估值。没有回执时先查事件和凭证，不直接重传。成员不存在或有歧义时请求不会发出。
 
 ```python
 result = rqamsh.custodian_events.upload_file(resources=['授权测试产品'], file_path='custodian_events.xlsx')

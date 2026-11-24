@@ -34,7 +34,7 @@ Python 签名：`rqamsh.analytics.asset_weight(resource: str, *, start_date: str
 |`data.classifier_weight[].weight[].quantity_pct`|数量占比|number|小数|该分组数量占同一分类合计数量的比例|随父级记录返回|
 |`data.classifier_weight[].weight[].market_value`|持仓市值合计|number|估值币种金额|该分组持仓市值合计|随父级记录返回|
 |`data.classifier_weight[].weight[].weight`|市值权重|number|小数|该分组市值占同一报告市值合计的比例|随父级记录返回|
-|`data.classifier_weight[].weight[].children`|分组内明细|array（object）|—|按代码与名称归并后的明细，字段见下列各行|随父级记录返回；可包含三级估值科目汇总，不保证是逐证券明细，无明细时为空数组|
+|`data.classifier_weight[].weight[].children`|分组内明细|array（object）|—|按代码与名称归并后的明细，字段见下列各行|随父级记录返回；两种分类中的三级估值汇总行（`virtual_*`）不是逐证券持仓。按资产类别（`asset_class`）排除应收、应付分组（包括 `virtual_receivable`、`virtual_payable`）；按交易资产属性（`trading_asset_class`）将这两类汇总归入现金分组。无明细时为空数组|
 |`data.classifier_weight[].weight[].children[].order_book_id`|代码|string|—|标的代码或估值表汇总行标识|随父级记录返回；汇总行标识不能用于逐券查询|
 |`data.classifier_weight[].weight[].children[].symbol`|名称|string|—|标的或估值表汇总科目名称|随父级记录返回|
 |`data.classifier_weight[].weight[].children[].quantity`|数量合计|number|—|同一代码与名称的数量合计|随父级记录返回；汇总科目不按证券数量解读|

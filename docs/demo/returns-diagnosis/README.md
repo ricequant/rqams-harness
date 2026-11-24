@@ -67,7 +67,7 @@ result = rqamsh.analytics.indicators(
 
 ### 区间核对五项
 
-净值和净资产类时序用公开的指标序列读，逐日形如 `{指标名: {日期: 值}}`；序列不承诺带齐所有字段，份额、累计每份分红等只在必要日期用单日 `balances.get` 或 `unit_events.list` 读，不假设字段一定存在，也不编造值：
+净值和净资产类时序用公开的指标序列读，逐日形如 `{指标名: {日期: 值}}`。`analytics.series` 按 `indicators` 选择指标，不返回完整头寸报表；本例只请求下列五项。份额变动用 `unit_events.list`，实际份额、累计每份分红等在必要日期用单日 `balances.get` 读取；字段缺失或空值保留为缺口，不编造值：
 
 ```python
 series = rqamsh.analytics.series(

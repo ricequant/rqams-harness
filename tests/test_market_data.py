@@ -41,7 +41,7 @@ def test_benchmarks_rule_without_leading_slash_is_reachable(service):
 
 
 def test_realtime_benchmark_returns_omits_absent_benchmark(service):
-    """省略基准时不下发空参数，由服务端返回全部内置基准。"""
+    """只验证省略基准时不下发空参数，不验证服务端的缺参处理。"""
     client, state = service
     state["responses"] = [(200, {})]
     client.market_data.realtime_benchmark_returns()

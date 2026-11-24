@@ -71,8 +71,27 @@ rqamsh product-groups get --resource "授权测试产品组"
 ```
 
 ## create
-创建产品组，服务端校验成员权限并在配置有效时提交组重算。
+创建产品组。通过校验且组有成员、估值起始日非空时，从组起始日提交组自身重算；否则不提交。
 [产品组完整字段](fields/products.md#productgroup)。create 必填 name、report_name、product_ids、benchmark、description、label、start_date、trading_start_date；成员必须使用产品 ID，不能放产品名称；基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)。label 取值见[产品标签](fields/products.md#productlabel)；成员权限也需满足创建要求。
+
+### 创建时的推荐起点
+
+以下由调用方显式组织，SDK 不自动补值；用户明确配置优先，仅用于新建，不在更新时覆盖原配置。
+
+|字段|推荐值或处理方式|适用条件与注意事项|
+|---|---|---|
+|`label`|`live`|普通实盘产品组；模拟产品组按实际选 `paper` 等标签|
+|`report_name`|与 `name` 相同|名称由用户指定并查重|
+|`benchmark`|`{"type":"index","id":"000300.XSHG"}`|未指定时采用沪深 300；已有明确基准时按实际提交|
+|`description`|`""`|没有说明时传空字符串；该键仍是创建必填项|
+|`product_ids`|用户指定的成员产品 ID|不默认全空间、不传名称、不自动增加成员|
+|组类型|聚合组|未要求权重组合时不传 `product_weights` 与 `rebalance_frequency`；不把聚合误当等权收益组合|
+|`product_weights`|仅权重组传产品 ID → 小数权重|按用户指定权重；明确要求等权才等分，权重合计为 1（如两只各 `0.5`），不传百分数 `50`|
+|`rebalance_frequency`|`daily`|仅权重组的默认调仓频率；其他频率按实际要求|
+|`start_date`|聚合组取成员最早起始日；权重组取所有成员同时有单位净值的最早日期|调用方查询并显式提交；权重组可用 `balances.field_earliest_date(resources=[成员ID], field="unit_net_value")` 获取共同最早日期，不逐个日期猜测|
+|`trading_start_date`|与本次 `start_date` 相同|实际交易起始日更晚时按实际填写；不得早于估值起始日|
+
+权重组没有共同净值日期时不能用当天或成员成立日替代；完整日期与日历边界见下文。
 
 <a id="group-date-constraints"></a>**起始日规则（创建与更新共用）**
 
@@ -83,8 +102,7 @@ rqamsh product-groups get --resource "授权测试产品组"
 - 权重组（`product_weights` 非空）：`start_date` 不能早于所有成员都有单位净值的最早日期（权重组按成员单位净值加权，成员净值不齐时组结果不可得），也不能晚于成员中最早的到期日；若该最早日期不存在（成员从未同时有净值），任何 `start_date` 都会被拒绝。
 - 聚合组（不提供权重）：`start_date` 不能早于成员最早的 `start_date`（不要求成员已有净值）；不校验到期日上限，可以晚于成员到期日。
 - 读取语义：组结果只在 `[start_date, 成员最早到期日]` 内可见，请求区间与它取交集；交集内缺日报未就绪，区间外不返回结果、也不回退到更早的旧结果。无成员或 `start_date` 为空（配置无效）时不返回任何组结果，避免读到配置变更前的旧结果。
-- `start_date` 属于计算配置：校验通过且有成员时，创建与真实变更都会提交组重算；展示字段（name/report_name/description）变化不提交。
-- `rebalance_frequency` 同属计算配置，变更影响与成员、权重、起始日相同（取值见[产品组调仓频率](fields/products.md#rebalancefreq)）。
+- 起始日与调仓频率的修改是否提交组重算，见 [更新](#update)；调仓频率取值见[产品组调仓频率](fields/products.md#rebalancefreq)。
 
 <a id="group-calendar"></a>**组日历（由成员推导）**
 
@@ -118,8 +136,9 @@ rqamsh product-groups create --input @product-group.json
 ```
 
 ## update
-修改产品组；成员变化会调整组访问权限，计算配置变化可能触发组重算。
-product_weights 是产品 ID→权重的 JSON 对象；不要自行假设任意权重会被归一化。空权重修改须同时提供 product_ids。成员变更会更新组权限；成员、权重、起始日、调仓频率等计算配置改变可能提交组计算，name/report_name/description 等展示字段不因自身变更而重算。起始日校验与创建相同（见[起始日规则](#group-date-constraints)）；清空成员且未显式提供 `start_date` 时该字段被置空。
+修改产品组配置。`product_weights` 是产品 ID 到权重的 JSON 对象，不要假定任意权重会被归一化；清空权重须同时提供 `product_ids`。提交成员配置时服务端会按该配置重新核对组权限，不改成员产品自己的权限。起始日校验与创建相同（见[起始日规则](#group-date-constraints)）；清空成员且未显式提供 `start_date` 时该字段被置空。
+
+更新后有成员且有估值起始日，并且 `label`、`product_ids`、`product_weights`、`start_date`、`trading_start_date`、`benchmark`、`rebalance_frequency` 中至少一项实际变化时，从更新后的 `start_date` 提交组自身重算，不逐个重算成员。只重排成员、提交等值配置，或只改 `name`、`report_name`、`description` 时不提交；没有成员或估值起始日也不提交。
 
 Python 签名：`rqamsh.product_groups.update(resource: str, data: dict[str, Any])`。
 
@@ -132,9 +151,9 @@ Python 签名：`rqamsh.product_groups.update(resource: str, data: dict[str, Any
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际修改条数|integer|条|本次实际更新的产品组数，按命中记录数计|恒返回；请求体没有任何可更新字段时为 `0`，成功更新为 `1`；提交值与现值相同也计 `1`，因此它不代表配置真的发生了变化；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际修改条数|integer|条|本次实际更新的产品组数，按命中记录数计|恒返回；没有字段需要写入时为 `0`，命中并执行更新为 `1`，提交值与现值相同也计 `1`；见[写入结果](connection.md#write-result)|
 
-操作检查：提交前保存原成员与权重；清空 product_weights 时同时给 product_ids。返回后检查 effect_count 并用 get 核对；成员变更会影响组访问权限，计算配置变更还需核对组头寸报表或指标。
+操作检查：提交前保存原成员与权重；涉及成员配置时也保存可读取的组权限。返回后检查 `effect_count`，用 `get` 核对配置；涉及成员配置时另用 [`permissions.list`](permissions.md#list) 核对组权限。组权限先于组配置更新；同时改成员和名称时，即使随后因名称冲突未保存组配置，已调整的权限也不会回滚。这种失败同样要先读回组配置与组权限，再决定如何修正。发生重算时读取组头寸报表或指标，不能用 `effect_count` 代替计算结果。
 
 ```python
 import json
@@ -181,11 +200,11 @@ Python 签名：`rqamsh.product_groups.recompute(resource: str)`。
 |---|---|---|---|
 |`resource`|`str`|必填|产品组唯一 ID 或名称。|
 
-返回：原始 `submit_recompute_count`；提交成功不表示计算完成。
+返回：原始 `submit_recompute_count`，统计匹配到并发起重算请求的组数，不是任务受理或完成计数。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`submit_recompute_count`|已提交重算的组数|integer|个|本次从组起始日提交重算匹配到的产品组数|恒返回；单组操作为 `1`，目标组不属于当前工作空间时为 `0`；只是提交计数，不代表计算完成或结果已就绪|
+|`submit_recompute_count`|匹配到的产品组数|integer|个|本次发起重算请求时在当前空间命中的组数|恒返回；命中单组返回 `1`，服务端未匹配到组时为 `0`|
 
 完成条件：submit_recompute_count 只表示提交数量。随后读取组头寸报表或指标并按[等待规则](connection.md)等待可用结果；若成员产品数据尚未正确估值，应先处理成员，单独重算组不能替代该步骤。
 

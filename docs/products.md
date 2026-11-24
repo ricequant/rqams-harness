@@ -71,7 +71,7 @@ rqamsh products get --resource "授权测试产品"
 ```
 
 ## create
-创建产品，服务端按数据源校验配置并可能初始化估值。
+创建产品，服务端按数据源校验配置。纯估值表与混合产品创建后自动提交估值：提供有效初始化报告时以报告日建立覆盖起点，未提供时从产品起始日以空头寸初始化。纯流水产品创建不自动提交该初始化计算，后续由实际流水等业务输入触发估值；创建成功不是历史输入已经齐全的证明。
 完整字段及 accounts、benchmark、valuation_settings、exchange_rate_settings、shares 展开见 [产品字段](fields/products.md)。create 至少需要 name、investment_category、strategy_category、benchmark、start_date（基准行情见[合约行情](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)、交易日见[交易日历](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)）。data_source 可省略，客户端采用混合来源；calendar 可省略，省略时服务端建成 `exchange`；三个取值的含义见[估值日历](fields/products.md#calendartype)。start_date 对所有数据源都在运行期必填，缺席时服务端报「产品开始日期不能为空」，与按数据源的必填集合无关；份额策略的适用条件与客户端默认见[创建时的推荐起点](#创建时的推荐起点)。提交初始化估值表（init_valuation_report_file）时可省略 start_date，服务端取该估值表的日期，但已给的 start_date 不能晚于该日期。maturity_date 不能早于 start_date；trading_start_date 省略时取 start_date 且不能早于它。纯估值报告源由报告建立起点，不能上传交易流水。
 
 <a id="calendar-support"></a>
@@ -95,13 +95,15 @@ rqamsh products get --resource "授权测试产品"
 |`auto_overwrite`|`false`|混合数据源推荐；客户端在省略时自动传 `false`；只有明确要自动采用后续估值表覆盖时才传 `true`|
 |`realtime_period_type`|`daytime`；估值表日盘后处理用 `valuation_day`|按实际监控时段选择|
 |`accounts`|用户未提供账户信息时使用默认：名称 `{产品名}交易账号`、账号 `RQ0000000001`、`broker=ricequant`（RQ 通道）、`is_custodian=false`|客户端自动：交易及混合来源省略该键时，在创建请求中补入一个默认账户；Agent 不因用户未提供账号而自行传 `[]` 或 `null`，也不从其他产品复制空账户配置。已提供账户对象只补缺失子字段。自动名称最长 50 字符，必要时缩短产品名前缀并附完整名称的摘要；多个账户加序号并避开本次请求内已有名称，不修改显式名称。工作空间内其他账户的同名冲突仍由创建结果报告，不自动改名重试。显式值（含 `[]`、`null`）不覆盖；纯估值来源不补。默认账号是逻辑标识，不是实际券商资金账号；导入真实券商文件前应配置匹配的通道和账号|
-|`benchmark`|真实业绩基准；常见宽基示例为 `{"type":"index","id":"000300.XSHG"}`|示例不是默认值；自定义基准用 `type=customized_index` 与基准 ID|
-|`investment_category`、`strategy_category`|按产品实际分类；权益类股票多头示例为 `equity`、`stock_long`|必填，没有通用默认；策略分类会影响指增等指标口径|
+|`benchmark`|未指定时推荐 `{"type":"index","id":"000300.XSHG"}`（沪深 300）|调用方显式提交，SDK 不自动补；用户给定或业务明确的真实基准优先，自定义基准用 `type=customized_index` 与基准 ID|
+|`investment_category`、`strategy_category`|普通权益产品的创建起点为 `equity`、`unconventionality`；明确股票多头时用 `equity`、`stock_long`|均须显式提交，SDK 不自动补；已知分类优先，不能把非权益或已知策略改成起点值；策略分类会影响指增等指标口径|
 |`valuation_settings`|ETF 常用 `etf=iopv`；含期货/期权时按会计口径用 `fut_opt=settlement`；累计净值按分红口径用 `acc_net_value=acc_unit_dividend`|不适用时不要填；服务端只默认 ETF 口径，其他空值不等于业务口径|
 |`exchange_rate_settings`|有港股时 `{"HKD":"sh"}`；按实际通道选 `sh` 或 `sz`|无港股可省略|
 |`fee_settings`|未确认费率时省略或传 `{}`；不要把未知费率填成 `0`|`0` 会被当成真实免费费率参与计提|
 |`maturity_date`|无明确到期日时省略|服务端当前落 `2999-12-31`；不要用到期日表达策略期限|
 |`shares`|只有分类份额产品才填|没有多份额时省略；份额键只能是单个英文字母|
+
+日期、真实费率、账户归属和分类份额不能由空表单推定：`start_date` 仍须来自实际业务，未提供托管信息时不新增空托管账户；名称、基金代码、管理人、说明等资料不明时省略可选字段，不编造。上述基准与分类推荐是创建起点，不覆盖用户已知配置；修改产品时未提交的配置不套用新建推荐值。
 
 创建默认混合来源配置示例（供 create 的 data 使用；示例中的 `000300.XSHG` 是指数代码，校验见[指数基础信息](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments)；请按用户指令替换名称、日期与业务配置）：
 
@@ -139,9 +141,17 @@ rqamsh products create --input @product.json
 
 ## update
 局部修改产品；影响估值的字段由服务端触发重算。
-update 为局部更新，但 null/空值不统一表示“保持不变”：部分字段会被清除。改估值参数、费率、起始日等可能重算；修改 auto_overwrite 会影响已保存报告的[估值表覆盖](reconciliation.md#valuation-report-overwrite-setting)；移除分类份额可能删除对应托管和份额事件，应先保存并核对关联数据。delete 是软删除，并移除相关访问权限；不保证物理删除历史业务数据或凭证，不能当作数据擦除接口。recompute 只提交，不等待；提交结果不代表重算完成。
+update 为局部更新，但 null/空值不统一表示“保持不变”：空的 `case_number`、`invest_advisor`、`invest_manager` 会清除该字段，纯流水产品的 `full_name` 也按此处理。未提交的字段保持不变。
 
-创建和修改均不提交只读身份、状态字段，完整读写范围见[产品字段](fields/products.md)。名称与报告名可以改（改名也会触发服务端重算判断），改名后必须用返回的 `effect_count` 与 `get` 结果做变更前后对比，不要用改名前解析到的名称继续调用。分类份额键只能是单个英文字母，各项 effective_date 必填、费率非负。
+|本次提交的字段|成功写入后的计算与数据效果|
+|---|---|
+|`start_date`、`unit_policy`、`auto_equity`、`auto_overwrite`、`fee_settings`、`shares`、`valuation_settings`、`exchange_rate_settings` 中任一项|自动提交历史重算；按产品起始日、估值起点、封账边界及分类份额变更起点确定计算范围，见[输入变更与重算](index.md#valuation-recompute)|
+|上述字段均未提交，提交了 `realtime_period_type`|从修改前产品日历的上一交易日提交计算，用于更新实时监控时段|
+|其余字段，如 `name`、`report_name`、`description`|只更新配置，不因这些字段本身提交估值计算|
+
+计算分支按提交字段判断，不以 `effect_count` 是否大于零判断；重复提交相同估值配置仍会提交计算。尚未启用分类份额的产品提交 `shares=null` 时会忽略该字段；若没有其他可更新字段，整个请求报“没有需要修改的字段”，不作为成功的无操作。已启用分类份额的产品提交 `shares=null` 则拒绝，不能用它清空配置。显式提交 `auto_overwrite=true` 会批量采用已保存报告，`false` 会移除已有覆盖；混合产品改为 `null` 后不自动采用后续报告，但保留已有覆盖，且仍进入计算分支，纯估值表产品仍按数据源自动采用，见[估值表覆盖](reconciliation.md#valuation-report-overwrite-setting)。移除分类份额会删除属于被移除分类的托管和份额事件，应先保存并核对关联数据。`recompute` 只提交、不等待；提交成功后仍需核验结果就绪。
+
+创建和修改均不提交只读身份、状态字段，完整读写范围见[产品字段](fields/products.md)。名称与报告名可以改；改名本身不提交估值计算。改名后必须用返回的 `effect_count` 与 `get` 结果做变更前后对比，不要用改名前解析到的名称继续调用。分类份额键只能是单个英文字母，各项 effective_date 必填、费率非负。
 
 Python 签名：`rqamsh.products.update(resource: str, data: dict[str, Any])`。
 
@@ -170,7 +180,7 @@ rqamsh products update --resource "授权测试产品" --input @update.json
 ```
 
 ## delete
-客户端只向产品端点发 DELETE，不附带任何清理；数据保留范围由服务端决定，不要据此假设可恢复（历史真机实测表现为软删产品与权限）。本客户端没有物理清理入口，也不提供恢复操作；列表不再可见也不代表历史数据已彻底清空。
+删除是软删除：将产品置为删除态，移除该产品的访问权限，刷新相关缓存及产品组的派生权限。该操作不物理删除历史流水、事件、估值报告或导入凭证，也不提供历史数据擦除。客户端只调用这一产品删除流程，没有额外清理或恢复入口；业务上须按不可通过本客户端恢复处理。
 
 Python 签名：`rqamsh.products.delete(resource: str)`。
 
@@ -233,8 +243,8 @@ Python 签名：`rqamsh.products.compute_state(resource: str)`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`state`|计算状态|string|—|服务端当前返回的表征计算状态的字段与取值|由数据决定；客户端原样透传，不校验取值、不补齐默认值，也不保证该键存在；与产品状态 `product_state` 不是同一枚举|
-|`execution_id`|计算任务执行序号|integer / null|—|服务端计算任务的执行序号，用于区分同一产品的不同次计算|由数据决定；只读，客户端原样透传，不补齐缺失值|
+|`state`|计算状态|string（枚举）|—|`computing`：任务进行中或还有待计算项；`error`：任务失败或失联；`normal`：无待计算项的任务正常结束，或尚无任务记录|服务端成功响应恒返回；无任务记录时返回 `normal`，不能据此认定已完成过估值；与产品状态 `product_state` 不是同一枚举|
+|`execution_id`|计算任务执行序号|integer / null|—|服务端计算任务的执行序号，用于区分同一产品的不同次计算|服务端成功响应恒返回；无任务记录时为 `null`。客户端不校验或补齐响应，缺键按异常响应保留诊断，不当作正常业务分支|
 
 结果检查：历史估值任务尚未完成时，调用方可稍后重查 `compute_state`，保留 `execution_id` 作为诊断，不重新提交重算。历史估值任务正常完成、状态为 `normal` 后，实时截面仍可能在按需准备；此时应读取所需的单产品实时 `balances.get` 结果，由客户端处理 HTTP 202 自动轮询，而不是只反复查询状态。等待结束仍未取得结果时交付缺口与排查方案，不再外层盲目重试；见[实盘规模案例](demo/live-product-scale/README.md#normal-realtime-wait)，通用停止条件见[未就绪与缺输入](connection.md#unready-inputs)。此操作自身只查询一次状态，不等待、不轮询。
 
@@ -259,9 +269,9 @@ Python 签名：`rqamsh.products.name_exists(name: str)`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`exists`|名称是否已存在|boolean|—|当前工作空间内是否已有同名产品|恒返回；`true` 表示名称已被占用，`false` 不保证随后创建一定成功|
+|`exists`|名称是否已存在|boolean|—|查询时当前工作空间内是否已有同名产品|恒返回；只读查重不预留名称，查询结束后其他请求仍可创建同名产品|
 
-结果检查：exists=true 表示名称已存在，应选择其他名称或通过 list/get 确认可访问目标；exists=false 不保证随后创建一定成功，创建仍需处理同名冲突。
+结果检查：exists=true 表示名称已存在，应选择其他名称或通过 list/get 确认可访问目标；exists=false 仅表示查询时未占用，不会预留名称。后续创建仍受唯一约束与其他字段校验限制，并发抢占时按创建返回的同名冲突处理。
 
 ```python
 result = rqamsh.products.name_exists(name='授权测试产品')
@@ -289,7 +299,7 @@ Python 签名：`rqamsh.products.field_exists(*, name: str | None=None, full_nam
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`exists`|取值是否已被占用|boolean|—|所选字段在当前工作空间内是否已有相同取值：`name`、`full_name`、`fund_code` 查顶层同名字段，`account_name` 查 `accounts.name`|恒返回；`true` 表示已被占用，`false` 不保证随后创建一定成功|
+|`exists`|是否已有相同取值|boolean|—|查询时所选字段在当前工作空间内是否已有相同取值：`name`、`full_name`、`fund_code` 查顶层同名字段，`account_name` 查 `accounts.name`|恒返回；只读查询不预留取值。名称、账户名称、基金代码受唯一约束，全称 `full_name` 不受唯一约束|
 
 结果检查：exists=true 表示该字段已被占用，应另选取值；exists=false 不保证随后创建一定成功，创建仍需处理冲突。
 

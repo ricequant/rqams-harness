@@ -97,19 +97,15 @@
 
 ## 估值报告文件信息
 
-报告文件元数据。下表字段均为列表返回键，不是需要发送的 JSON 外层键；列表通常只返回 `date`、`file_name`、`valuation_report_id`、`source`、`valuation_level`。其他字段是否提供以实际结果为准。
+下表是 [`valuation_reports.list`](../valuation_reports.md#list) 每条报告文件元数据的全部返回键，不是上传字段。列表不返回 `id`、`_id`、`fs_id`、`product_id` 或 `hash`；下载报告时使用 `valuation_report_id`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`date`|业务日期|string|YYYY-MM-DD|业务日期，不等同写入时间|只读元数据；以实际返回字段为准|
-|`valuation_report_id`|估值报告业务记录 ID|string|字符串 ID|估值报告业务记录 ID|只读元数据；以实际返回字段为准|
-|`fs_id`|原文件存储 ID|string|字符串 ID|服务端原文件存储 ID|只读元数据；以实际返回字段为准|
-|`product_id`|归属产品 ID|string|字符串 ID|归属产品 ID|只读元数据；以实际返回字段为准|
-|`file_name`|原上传文件名|string|—|原上传文件名|只读元数据；以实际返回字段为准|
-|`hash`|文件内容标识|string|—|上传文件内容标识|只读元数据；以实际返回字段为准|
-|`source`|来源|string（枚举）|—|流水或估值报告来源；枚举[估值报告来源](#valuationreportsource)|只读元数据；以实际返回字段为准|
+|`date`|业务日期|string|YYYY-MM-DD|业务日期，不等同写入时间|只读|
+|`valuation_report_id`|估值报告业务记录 ID|string|字符串 ID|估值报告业务记录 ID|只读|
+|`file_name`|保存的源文件名|string|—|文件上传时保存的文件名；结构化上传时为生成的 CSV 文件名|只读|
+|`source`|来源|string（枚举）|—|估值报告来源；枚举[估值报告来源](#valuationreportsource)|只读|
 |`valuation_level`|估值表级别|integer|`3` 或 `4`|该报告按三级还是四级估值表解析|只读元数据；`3` 表示无逐证券明细的三级报告；缺该字段的历史记录按 `4` 处理|
-|`id`|记录 ID|string / null|字符串 ID|服务端记录 ID|只读元数据；以实际返回字段为准|
 
 ## 枚举取值
 

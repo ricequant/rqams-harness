@@ -42,7 +42,8 @@ class MarketData(_Resource):
         """读取基准实时分钟收益。
 
         Args:
-            benchmark_id: 可选基准代码；省略时服务端返回全部内置基准的实时收益。
+            benchmark_id: 单个基准 ID。签名保留 None 默认值，但当前服务端省略参数时
+                会查询不存在的自定义基准并报错，不返回全部基准；须显式提供有效 ID。
         Returns:
             服务端原始实时收益数据。
         """

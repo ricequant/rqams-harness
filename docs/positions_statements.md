@@ -9,7 +9,7 @@
 单据及数量明细见[持仓单字段](fields/asset_units.md)。
 
 
-本组完成的是单据导入和数量对账，不保证触发产品估值重算，也不保证改写 [balances.get](balances.md#get) 中的计算持仓。若用户要求改变估值，应另外核对产品数据源及对应输入流程。
+持仓单的上传与删除只改变用于数量对账的单据，不写入估值输入、不提交估值重算，也不改写产品或资产单元的[计算头寸](balances.md#get)。要改变估值，应按产品数据源和业务意图选择对应的[估值输入](index.md#valuation-recompute)，不能用持仓单代替。
 
 
 ## API 使用约定
@@ -48,7 +48,9 @@ rqamsh positions-statements list --resource "授权测试资产单元"
 上传一个资产单元持仓单文件并等待导入任务完成。
 [持仓单与 positions[] 字段](fields/asset_units.md)。所有 resource 必须是资产单元 ID 或 symbol，归属产品自动确定。upload 只支持文件；broker 默认 ricequant，可选 cicc_dma/citic_dma/ricequant/cms_dma。文件必须符合相应通道模板，不能拿任意 Excel 直接上传。
 
-同资产类型+direction+order_book_id 的行会合并数量；存在合法 positions 时，同产品/资产单元/日期旧持仓单被删除，再保存新记录及原文件，所以同日导入为整体覆盖而非流水式 upsert。解析异常项可与合法项并存；部分失败后旧单也可能已被替换。持仓单导入不应被当作产品估值已更新的证明。
+每份文件只放一个业务日，多日数据须先拆成多份文件。服务端按资产类型、`direction`、`order_book_id` 合并数量，不按日期分组；模板若读出多个业务日，合并结果会写到最后一条有效行的业务日，覆盖该日的旧单而不是分别写入各日。
+
+解析完成且有有效持仓时，删除该单元同日旧单，再用有效持仓整体替换并保存原件；没有有效持仓时不删除旧单，不保存新单。若回执同时含 `effect_count=1` 与逐行错误，客户端抛出的 `partial_failure` 不会恢复旧单。若没有有效行但产生了逐行错误，凭证缺少业务日期，当前服务端启用日期断言时任务以 `FAIL` 结束，客户端报 `task_failed`，没有 `data.err_msg` 回执。
 
 Python 签名：`rqamsh.positions_statements.upload(resource: str, file_path: str, *, broker: str='ricequant', prefer_fill_fund_exchange_suffix: bool=True)`。
 
@@ -67,7 +69,7 @@ Python 签名：`rqamsh.positions_statements.upload(resource: str, file_path: st
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例|恒返回；见[任务终态 JSON](connection.md#task-result)|
 |`data`|任务结果|object|—|本次导入产物：`effect_count`(integer，`1` 表示写入了持仓单、`0` 表示没有可写入行)、逐行解析错误 `err_msg`(array，元素含 `line_num` 与 `msg`)、凭证 `confirmation_id`(string 或 null) 与业务日期 `date`(YYYY-MM-DD 或 null)|恒返回；`err_msg` 非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
 
-操作检查：上传前留存同日旧单和数量，文件应包含当天希望保留的完整持仓。检查任务终态中的解析错误，再 list(is_detail=True) 核对日期、代码、方向与合并数量；失败或超时先查已保存结果，不盲目重传造成再次覆盖。
+操作检查：上传前确认文件业务日期唯一，留存同日旧单和数量。取得任务终态后，检查错误并用 `list(is_detail=True)` 核对实际单据；需要重传时，提交当天应保留的完整持仓，不能只传失败行。等待超时不等于任务失败或取消：有 `task_id` 时，向原上传地址发 `GET`，以该 ID 作为查询参数 `task_id`，确认终态后再核对单据；没有任务 ID 且原任务仍未确认时，不并发重传。超时后只读到旧单，不能证明原任务不会随后覆盖它。
 
 ```python
 result = rqamsh.positions_statements.upload(resource='授权测试资产单元', file_path='positions.xlsx')
@@ -91,9 +93,9 @@ Python 签名：`rqamsh.positions_statements.delete(resource: str, positions_sta
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|本次实际删除的持仓单记录条数|恒返回；ID 不存在或不属于该资产单元时为 `0`；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|目标单元内实际删除的持仓单记录条数|恒返回；重复 ID 只计一次，不存在或属于其他单元的 ID 不计入，无命中时为 `0`；见[写入结果](connection.md#write-result)|
 
-操作检查：从目标单元 list 取得并确认各单据 ID，保存需留存的文件与明细。返回后核对 effect_count 及同范围列表；零影响数量不代表目标已成功删除，也不能通过此操作撤销已发生的其他业务变更。
+操作检查：从目标单元 `list` 取得并确认各单据 ID，保存需留存的文件与明细。返回后按目标单元读回，验证指定记录已不在列表中；`effect_count=0` 只表示本次没有删到记录，不证明这些 ID 原来属于目标单元。
 
 ```python
 result = rqamsh.positions_statements.delete(resource='授权测试资产单元', positions_statement_ids=['0123456789abcdef01234567'])

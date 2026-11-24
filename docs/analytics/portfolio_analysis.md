@@ -7,7 +7,7 @@
 
 ## 组合对比
 
-组合对比包含下列操作：`group_indicators`（指标）、`group_returns`（收益）、`group_capital_size`（规模）、`group_allocation`（配置穿透）、`group_returns_correlation` 与 `group_excess_correlation`（收益与超额收益相关性）、`group_overview_file`（报告导出），以及周报用途的 `weekly_report`（本周指标与指数周收益）与 `weekly_net_value_report`（周度净值报告导出）。除 `group_allocation` 返回成员合计后的整组配置外，其余操作都按成员并排或成员间矩阵给出，便于横向对比；`group_overview_file` 导出这些内容。成员集合由 `resources` 显式给出，顺序保留、重复去重；`end_date` 必填，`start_date` 省略时由服务端按默认区间处理，但请求体中该键会被省略而不是下发空值。两条周报操作不套用下面这组共同前缀，签名与参数见[周报数据](#周报数据)。
+组合对比包含下列操作：`group_indicators`（指标）、`group_returns`（收益）、`group_capital_size`（规模）、`group_allocation`（配置穿透）、`group_returns_correlation` 与 `group_excess_correlation`（收益与超额收益相关性）、`group_overview_file`（报告导出），以及周报用途的 `weekly_report`（本周指标与指数周收益）与 `weekly_net_value_report`（周度净值报告导出）。除 `group_allocation` 返回成员合计后的整组配置外，其余操作都按成员并排或成员间矩阵给出，便于横向对比；`group_overview_file` 导出这些内容。成员集合由 `resources` 显式给出，顺序保留、重复去重。两条周报操作不套用下面这组共同前缀，签名与参数见[周报数据](#周报数据)。
 
 Python 签名（共同前缀）：`resources: list[str], end_date: str, start_date: str | None=None, benchmark: str | None=None`。
 
@@ -15,8 +15,8 @@ Python 签名（共同前缀）：`resources: list[str], end_date: str, start_da
 |---|---|---|---|
 |`resources`|`list[str]`|必填|非空成员数组，元素为产品或产品组唯一 ID 或名称。|
 |`end_date`|`str`|必填|YYYY-MM-DD。|
-|`start_date`|`str \| None`|`None`|YYYY-MM-DD；省略时不下发该键。|
-|`benchmark`|`str \| None`|`None`|可选基准；仅收益、超额相关性与报告导出接受该参数。|
+|`start_date`|`str \| None`|`None`|YYYY-MM-DD；省略时不下发该键，服务端取 `end_date` 作为起点；查询区间趋势时须显式给开始日。|
+|`benchmark`|`str \| None`|`None`|仅收益、超额相关性与报告导出接受；传基准纯 ID（如 `000300.XSHG`，不带类型前缀），省略时用沪深 300。|
 |`output`|`str`|必填（仅 `group_overview_file`）|本地输出文件路径，父目录须存在且目标文件不得已存在；任务终态后才写入。|
 
 - group_indicators：以查询串提交，其他组合对比操作以请求体提交。
@@ -282,7 +282,7 @@ rqamsh analytics weekly-net-value-report --resource 授权测试产品组 --outp
 
 ## 交易分析
 
-- trading_analysis：读取区间交易分析列表；区间可省略，由服务端决定默认范围。
+- trading_analysis：读取区间交易分析列表。
 - single_trading_analysis：读取单标的交易分析；标的代码必填且非空，可选方向与资产类别过滤。
 - algo_trading_performance：读取算法交易效果；可选算法类型、算法名与时间跨度、展示方式。
 
@@ -292,7 +292,7 @@ Python 签名：`rqamsh.analytics.trading_analysis(resource: str, *, start_date:
 |---|---|---|---|
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
 |`order_book_id`|`str`|必填|标的代码，仅 `single_trading_analysis`；空串或空白被拒绝。|
-|`start_date` / `end_date`|`str \| None`|`None`|YYYY-MM-DD；省略时由服务端决定默认区间。|
+|`start_date` / `end_date`|`str \| None`|`None`|YYYY-MM-DD；三个操作分别对省略的日期补默认值：开始日为资源的 `trading_start_date`（交易起始日），结束日为服务端当天。|
 |`asset_class` / `direction`|`str \| None`|`None`|资产类别与买卖方向过滤。|
 |`algo_type` / `algo_name` / `algo_time_span` / `display_mode`|`str \| None`|`None`|算法交易过滤与展示参数；只在提供时下发。|
 

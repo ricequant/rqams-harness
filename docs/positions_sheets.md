@@ -19,7 +19,7 @@
 |写入后是否影响头寸|当日没有估值表覆盖时即成为该日截面输入，不依赖产品设置|需被产品采用：纯估值表数据源、混合数据源开启自动覆盖，或创建时的初始化报告；否则只保存供核对|
 |能否覆盖分类份额|不能：截面结构里没有分类份额估值字段，提交了也不落库|能：可带分类份额估值，覆盖时按分类逐字段处理（`null` 不覆盖，显式 `0` 覆盖）|
 |持仓可带字段|`order_book_id`、`symbol`、`asset_class`、`direction`、`market_value`、数量、成本价、成本、公允价、[应计利息](https://www.ricequant.com/doc/rqdata/python/convertible-mod#rqdata-API-convertible-get_accrued_interest_eod)与期货平衡项市值|同左，另含结算币种公允价（如港币价格，按 [港币汇率](https://www.ricequant.com/doc/rqdata/python/stock-hk#rqdata-API-get_exchange_rate_hk) 折算）与应付金额按分类份额的拆分|
-|记录与文件|无元数据层、无源文件、无下载；删除只删持仓表记录|有报告元数据与源文件可下载；按日期删除会一并删除元数据并取消该日的自动估值表覆盖|
+|记录与文件|无元数据层、无源文件、无下载；删除只删持仓表记录|有报告元数据与源文件可下载；[按日期删除](valuation_reports.md#delete)同时处理该日的元数据与估值表覆盖|
 
 因此按意图选入口：需要覆盖分类份额、指定结算币种价格，或要受产品「采用报告」设置约束时用[估值报告](valuation_reports.md#upload)；只需要给出某日的完整持仓截面、且希望写入即按当日截面生效时用本页的 `upsert`。
 
@@ -81,7 +81,9 @@ Python 签名：`rqamsh.positions_sheets.upsert(resource: str, data: dict[str, A
 |`modified_success_count`|实际覆盖数|integer|条|内容实际发生变化的持仓表数|恒返回；重复提交完全相同的内容时为 `0`，不代表失败|
 |`error_messages`|未写入原因|array（string 元素）|—|每个未写入日期的原因，形如「产品X在YYYY-MM-DD已存在估值表覆盖」|恒返回；无跳过日期时为空数组，非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
 
-结果检查：先看 error_messages 是否为空，再比较 expected 与 success 计数；同一日期重复提交完全相同的内容时 modified_success_count 为 0，这不是错误（记录没有变化），但同样会生成一份凭证；存在被跳过的日期时抛部分失败异常，异常详情保留完整结果。写入完成后用 `get` 读回该日期确认内容，不要只看计数。
+只要有日期通过估值表覆盖检查，就按其中最早日期提交重算；即使内容不变、`modified_success_count=0`，也会生成凭证并提交重算。全部日期被跳过时不写入、不生成凭证、不提交重算。
+
+结果检查：先看 `error_messages`，再比较预计与实际计数。部分日期被跳过时，客户端抛出 `partial_failure` 并保留完整回执，其他日期的写入不会回滚。用 `get` 读回未跳过日期的内容；若需让被跳过日期改用持仓表，先核对该日估值表覆盖，不能靠重复提交绕过它。
 
 ```python
 sheet = {
@@ -101,7 +103,7 @@ rqamsh positions-sheets upsert --resource "授权测试产品" --input @position
 ```
 
 ## delete
-按日期批量删除产品持仓表。
+按日期批量删除产品持仓表，不删除估值报告或其覆盖。通过校验的非空请求按**最早请求日期**提交重算，即使未删到持仓表也提交；实际计算区间见[重算规则](index.md#valuation-recompute)。
 
 Python 签名：`rqamsh.positions_sheets.delete(resource: str, dates: list[str])`。
 
@@ -114,9 +116,9 @@ Python 签名：`rqamsh.positions_sheets.delete(resource: str, dates: list[str])
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|本次按日期实际删除的持仓表条数|恒返回；参数是日期而不是记录 ID，该日期没有持仓表时为 `0`，不代表请求失败；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|本次按日期实际删除的持仓表条数|恒返回；无命中时为 `0`，不计重复日期或其他记录类型；见[写入结果](connection.md#write-result)|
 
-结果检查：删除前用 `get` 确认这些日期确实存在；删除不可撤销并触发必要重算，随后重新查询确认目标日期已消失、无关日期未受影响。
+结果检查：删除前用 `get` 确认目标日期并保存持仓表；删除不可撤销。随后用 `get` 确认目标日期的持仓表已移除，再核对重算后的当日及后续估值。重算使用剩余估值输入，不会恢复被删持仓表或覆盖前的旧结果。
 
 ```python
 result = rqamsh.positions_sheets.delete(resource='授权测试产品', dates=['2026-01-05'])

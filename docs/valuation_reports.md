@@ -27,7 +27,7 @@
 
 两者都与[资产单元持仓单](positions_statements.md)不同：资产单元持仓单挂在资产单元上，只服务数量核对，不参与估值，也不触发重算。
 
-两种形态的删除也是各自独立的方法：[删除估值报告](#delete) 按日期删除报告、元数据并取消该日的自动估值表覆盖（该日 `done` 随之复位为 `false`），[删除产品持仓表](positions_sheets.md#delete) 只删持仓表记录，不动报告与覆盖；两者都按日期而不是记录 ID 删除，都会触发必要重算，返回的 `effect_count` 都只统计自己那一类记录。
+两种形态分别删除：[删除估值报告](#delete) 也处理元数据与估值表覆盖，[删除产品持仓表](positions_sheets.md#delete) 只删持仓表记录。两者都按日期而非记录 ID 删除，删除回执只统计各自的主记录。
 
 字段逐项见[估值报告字段](fields/valuation_reports.md)。
 
@@ -103,7 +103,7 @@ source 默认open_api，允许manual/open_api/client_upload，取值见[估值�
 - 产品费用单独保留：管理费、托管费、销售服务费、运营费、业绩报酬各按对应的费用应付科目保留，不并入其他应付款。
 - 上海、深圳股票市值与总资产、总负债直接取表内汇总行，不按汇总持仓重算；三级持仓本身是汇总额，逐券口径不适用。
 
-有效报告也可能伴随解析错误；部分失败异常保留完整结果，不保证已保存内容回滚。
+整份文件在解析阶段被拒绝，或未通过同日替换授权与日期校验时，本次导入不保存报告或凭证，也不提交重算。文件解析得到报告并附带错误时，仍须通过这些校验；若获得含非空 `err_msg` 的写入回执，报告、原件与凭证已经保存，是否写入覆盖并提交重算取决于[覆盖设置](reconciliation.md#valuation-report-overwrite-setting)。客户端抛出 `partial_failure` 并保留完整回执，不回滚已保存的报告或覆盖。
 
 Python 签名：`rqamsh.valuation_reports.upload(resource: str, data: dict[str, Any] | None=None, *, file_path: str | None=None, replace_dates: list[str] | None=None, is_overwrite: bool=False, source: str='open_api')`。
 
@@ -121,14 +121,14 @@ Python 签名：`rqamsh.valuation_reports.upload(resource: str, data: dict[str, 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |（根对象）|返回根|object|—|一次导入的写入结果对象|恒返回|
-|`err_msg`|解析错误说明|array（string 元素）|—|该报告解析过程中产生的错误文本|恒返回，结构化导入为空数组；非空即抛部分失败异常且已保存内容不回滚，见[逐项失败容器](connection.md#item-errors)|
+|`err_msg`|解析错误说明|array（string 元素）|—|该报告解析过程中产生的错误文本|恒返回；结构化导入为空数组，非空即抛[部分失败异常](connection.md#item-errors)|
 |`confirmation_id`|导入凭证 ID|string|字符串 ID|本次导入生成的凭证 ID，可用 `confirmations` 核对|恒返回|
-|`effect_count`|实际影响条数|integer|条|按产品与日期 upsert 实际命中的报告数|恒返回；新建报告时为 1，覆盖后内容未变化时为 0，不代表请求失败；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际影响条数|integer|条|本次新建或内容实际改写的报告数|恒返回；新建或改写为 `1`，内容未变为 `0`；`0` 不阻止凭证生成，也不阻止采用该报告的产品提交重算；见[写入结果](connection.md#write-result)|
 |`valuation_report_id`|估值报告业务记录 ID|string|字符串 ID|本次写入的报告记录 ID，下载时使用|恒返回|
 |`date`|业务日期|string|YYYY-MM-DD|本次实际写入的报告日期|恒返回；以服务端按报告内容解析出的日期为准|
-|`is_modified`|是否覆盖已有报告|boolean|—|本次是否修改了同日已有报告|恒返回；新建同日报告时为 false，与 `effect_count` 一起解读|
+|`is_modified`|既有报告内容是否改变|boolean|—|是否实际改写了同日已有报告|恒返回；新建或同日报告内容不变时为 `false`，与 `effect_count` 一起解读|
 
-操作检查：上传前查同日报告并明确是否允许替换；replace_dates 比全局 is_overwrite 更适合限定授权日期。返回或部分失败后先检查 err_msg、date、valuation_report_id，并 list/download 核对已保存内容，再决定是否重试；估值更新还需检查 auto_overwrite 和头寸报表。返回本身不含估值表级别，需要确认级别时用 `list` 的 `valuation_level` 核对。
+操作检查：上传前查同日报告并明确是否允许替换；`replace_dates` 比全局 `is_overwrite` 更适合限定授权日期。收到正常或部分失败回执后，先看 `err_msg`、`date`、`valuation_report_id`，再用 `list`、`download` 核对元数据与原件是否保存，不能用它们证明净资产、持仓等解析值正确。混合数据源产品可用 [`reconciliation.diff`](reconciliation.md#diff) 的报告侧净资产、持仓数量等与原件比对；是否被估值采用，另按[覆盖设置](reconciliation.md#valuation-report-overwrite-setting)与头寸报表核对。没有回执时先查目标日期的元数据与凭证；文件有误且须替换时，修正后按授权重新提交完整报告。报告级别取 `list` 的 `valuation_level`。
 
 ```python
 import json
@@ -154,9 +154,11 @@ rqamsh valuation-reports upload --resource "授权测试产品" --file-path valu
 replace_dates 仅放行上传文件实际日期的已有报告；并不删除白名单里的其他日期。
 
 ## delete
-按日期删除估值报告、元数据和自动估值表覆盖头寸报表，并触发必要重算。
+按日期删除目标产品的估值报告、元数据和对应日期的估值表覆盖；三者独立按日期匹配，即使没有报告主记录，也会清除同日仍存在的覆盖。删除前读到覆盖、且删除后当天已无覆盖时，对账标记 `done` 复位为 `false`，包括此前人工标记的完成状态；删除前未查到覆盖时不改标记。并发删除下，不能由删除条数推断 `done` 未变，须读回确认。
 
-删除参数是日期而非记录 ID，会处理对应报告、元数据和相关自动估值表覆盖记录；删除不做起始日与封账日校验，因此可删除范围与估值影响范围可能不同。删除后分别核对报告列表及受影响日期头寸报表。
+删除步骤完成后，从**最早请求日期**发起重算，即使 `effect_count=0` 也发起。删除不做产品起始日与封账日校验，但实际重算仍受[起始日、封账等边界](index.md#valuation-recompute)限制。计算使用剩余估值输入，不是恢复覆盖前保存的旧结果。
+
+日期超过 500 个时分批提交删除；后续批次失败不撤回此前已提交的批次。未使用数据库事务时，同批的报告、元数据、覆盖删除也依次执行，后一步失败不撤回前一步。删除完成后如果重算提交失败，已完成的删除不会撤回。
 
 Python 签名：`rqamsh.valuation_reports.delete(resource: str, dates: list[str])`。
 
@@ -170,9 +172,9 @@ Python 签名：`rqamsh.valuation_reports.delete(resource: str, dates: list[str]
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |（根对象）|返回根|object|—|只含 `effect_count` 一个键的对象|恒返回|
-|`effect_count`|实际删除条数|integer|条|本次按日期实际删除的估值报告条数|恒返回；该日期没有报告时为 0，不代表请求失败；同一日期还会一并删除元数据与自动估值表覆盖记录，但计数只统计报告记录，见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|本次按日期实际删除的估值报告条数|恒返回；无报告命中时为 `0`，元数据、覆盖记录和重复请求日期均不计入；见[写入结果](connection.md#write-result)|
 
-操作检查：先 list/download 保存目标日期报告，确认 dates 是业务日期而非记录 ID。返回后检查 effect_count 和同日期列表；删除还可能移除自动覆盖头寸报表并触发重算，应核对受影响估值，不将报告删除结果当作重算完成证明。
+操作检查：先用 `list`、`download` 保存目标日期报告，确认 `dates` 是业务日期。收到回执后核对报告列表，并在重算完成后检查受影响的头寸报表。`reconciliation.list` 返回目标日时核对该行的 `auto_reconciled` 与 `done`；未返回目标日（例如删除仅因有报告而列入的非交易日）时，不能据此确认两个标记为 `false`。删除报错或无回执时，也先核对各日期的报告、可读的对账状态及计算状态，再决定如何处理未完成部分，不盲目重发。
 
 ```python
 result = rqamsh.valuation_reports.delete(resource='授权测试产品', dates=['2026-01-05'])

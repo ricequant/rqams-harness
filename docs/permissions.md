@@ -4,7 +4,7 @@
 
 ## 权限级别
 
-六个级别按下列顺序从低到高比较：`forbidden` < `read_net_value` < `read_position` < `read_import_data` < `write` < `admin`；操作要求的是下限，持有更高一级即可通过更低级别要求的读取，注意 `read_import_data`（三级）高于 `read_position`（二级）。工作空间管理员与该资源的创建者按最高级别处理；服务端创建产品或产品组时还可自动保存创建者的 `write` 授权行，不能把这条行当作本次分享新增的权限或在撤销分享时一并删除。`permission_id` 是授权行 ID，不是本枚举的取值。
+六个级别按下列顺序从低到高比较：`forbidden` < `read_net_value` < `read_position` < `read_import_data` < `write` < `admin`；操作要求的是下限，持有更高一级即可通过更低级别要求的读取，注意 `read_import_data`（三级）高于 `read_position`（二级）。工作空间管理员与资源创建者的管理身份不来自授权行。产品创建时写入创建者的默认 `write` 行；产品组创建时，创建者的初始授权行取其在未删除成员产品上的最低授权级别，不固定为 `write`。这些默认授权行不属于本次分享，撤销分享时不要一并删除。`permission_id` 是授权行 ID，不是本枚举的取值。
 
 逐操作的级别下限见[逐操作最低权限级别](#逐操作最低权限级别)，授权行的读取与写入见下面四个操作；查询到资源不等于可写，判据见[可见不等于可写](#可见不等于可写)。
 
@@ -112,13 +112,13 @@ Python 签名：`rqamsh.permissions.grant(resource: str, entries: list[dict[str,
 |---|---|---|---|
 |`user_id`|`int`|必填|被授权用户 ID，必须是正整数且不能是布尔值（`true`/`false`）——否则客户端本地抛 `invalid_argument`，请求不会发出。|
 |`permission`|`str`|必填|要授予的级别，取值见[权限级别](#权限级别)。|
-|`permission_id`|`str`|省略|要调整的授权行 ID，取自 [`list`](#list)；省略时按用户匹配既有授权行。给出时必须为非空白字符串，否则客户端本地抛 `invalid_argument`，请求不会发出。|
+|`permission_id`|`str`|省略|要调整的授权行 ID，取自 [`list`](#list)，须与该项 `user_id`、目标资源及当前工作空间一致；省略时按用户匹配既有授权行。给出时必须为非空白字符串，否则客户端本地抛 `invalid_argument`，请求不会发出。|
 
 返回：服务端原始响应，含实际影响条数与逐项未生效原因。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际影响条数|integer|条|本次新增或调整实际命中的授权行数|恒返回；`0` 表示没有命中，不代表请求失败；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际变更条数|integer|条|本次新增或实际修改的授权行数，不是匹配行数|恒返回；以同一操作者再次提交已保存的相同授权，授权行内容未变化时不计数。`0` 时结合 `error_messages` 和 [`list`](#list) 区分无变更与未生效；见[写入结果](connection.md#write-result)|
 |`error_messages`|逐项未生效原因|array（object 元素）|—|按项说明哪一项为何未生效，元素含 `resource_id`、`user_id` 与 `err_msg`|恒返回；非空即抛 `partial_failure`，已生效项不回滚；见[逐项失败容器](connection.md#item-errors)|
 
 结果检查：`effect_count` 与 `error_messages` 可以同时出现，失一项不回滚其他项；按 `err_msg` 修正后只重试失败项。典型原因：被授权用户没有使用该工作空间的权限、授予的级别高于调用者在该资源上的级别、对产品组授权时被授权人是空间管理员或组创建者而其级别高于其在成员产品上的最低级别。
@@ -146,7 +146,7 @@ Python 签名：`rqamsh.permissions.grant_many(resources: list[str], entries: li
 
 返回：服务端原始响应，与 [`grant`](#grant) 相同（`effect_count` 与逐项 `error_messages`；非空即抛 `partial_failure`）。
 
-结果检查：`effect_count` 是命中的「资源 × 授权项」条数，不等于资源数；混批与带 `permission_id` 的输入不会发到服务端，先按类型分组再提交。一次调用只服务一种资源类型。
+结果检查：`effect_count` 只统计新增或内容实际修改的授权行，不等于资源数，也不等于提交的「资源 × 授权项」数量。混批与带 `permission_id` 的输入不会发到服务端，先按类型分组再提交。一次调用只服务一种资源类型。
 
 ```python
 result = rqamsh.permissions.grant_many(

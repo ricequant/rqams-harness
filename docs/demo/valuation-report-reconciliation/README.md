@@ -39,7 +39,7 @@
 
 **查什么。** 先按唯一 ID 或唯一名称 `products.get(resource="<P 的产品 ID 或唯一名称>")`，读 `data_source`、`auto_overwrite`、`start_date`、`closing_date`、`maturity_date`。名称有歧义时才用 `products.list` 看候选；不先做无筛选全空间扫描。`auto_overwrite` 是产品级“是否自动采用后续报告”的设置，不是本次上传的覆盖参数。
 
-**判断。** `data_source=trade` 不能导入报告；`valuation_report` 的有效报告会进入覆盖并重算；混合产品由 `auto_overwrite` 决定是否自动采用。报告日期不能晚于到期日，且要落在产品业务区间；目标日处于封账范围时写入/替换通常被拒绝。
+**判断。** `data_source=trade` 不能导入报告；`valuation_report` 的有效报告会进入覆盖并重算；混合产品由 `auto_overwrite` 决定是否自动采用。报告日期不能晚于到期日，且要落在产品业务区间；目标日不晚于封账日时，上传或替换会被拒绝。
 
 ## 第 2 步：盘点已有报告与文件合法性
 
@@ -67,7 +67,7 @@ result = rqamsh.valuation_reports.upload(
 
 `data` 与 `file_path` 必须且只能给一个。结构化入口的必填字段、持仓键和返回结构，以[估值报告操作](../../valuation_reports.md#upload)与[字段页](../../fields/valuation_reports.md)为准，不在这里另立契约。报告的 `source` 默认 `open_api`，允许 `manual`/`open_api`/`client_upload`；它描述报告来源，不是产品数据源。
 
-**返回怎么读。** 重点看 `err_msg`、`confirmation_id`、`effect_count`、`valuation_report_id`、`date`、`is_modified`。`err_msg` 非空表示解析/保存错误，客户端抛部分失败异常且已保存内容不保证回滚；`effect_count` 新建时为 1、覆盖后内容未变化时为 0；`is_modified` 新建同日报告时为 false；`date` 是服务端按报告内容解析出的日期，必须与目标日一致。
+**返回怎么读。** 重点看 `err_msg`、`confirmation_id`、`effect_count`、`valuation_report_id`、`date`、`is_modified`。有可解析报告并通过同日替换授权、到期日、起始日及封账校验后，服务端保存报告与凭证，再返回解析错误；取得含 `err_msg` 的写入回执时，非空错误会使客户端抛部分失败异常，但不会撤销已保存报告或已经提交的覆盖计算。解析整份拒绝或上述校验失败时不进入保存，见[上传契约](../../valuation_reports.md#upload)。`effect_count` 新建时为 1、覆盖后内容未变化时为 0；`is_modified` 新建同日报告时为 false；`date` 是服务端按报告内容解析出的日期，必须与目标日一致。
 
 同日已有报告但未给 `replace_dates`/`is_overwrite` 会被拒绝；`err_msg` 非空、部分失败或结果未知时，保留 `confirmation_id` 和完整结果，先查报告列表与凭证，不重传整份文件。返回日期不符或错误无法解释时停止。
 
@@ -80,7 +80,7 @@ result = rqamsh.valuation_reports.upload(
 |采用报告|纯估值表产品的有效报告进入覆盖；混合产品看 `auto_overwrite`，或获授权的单日 `reconciliation.auto`；创建初始化报告是另条例外|不能仅凭保存/替换推断已采用|
 |估值就绪|`compute_state=normal` 后重新读目标日及后续受影响日期|业务对账通过，或所有差异已解释|
 
-易混点：混合产品 `auto_overwrite=false` 且未获显式采用授权时，保存报告只供核对，`balances.get` 可能仍是系统结果；`auto_overwrite=false` **不能证明历史上没有覆盖**，此前显式 `auto`、初始化或历史覆盖可能仍在，必须读 `auto_reconciled`/覆盖状态，不能只凭开关推断。开启 `auto_overwrite` 会把已保存报告批量写入覆盖，关闭会移除已有覆盖输入，不是单日开关。`reconciliation.auto` 是明确采用某日的动作；`undo_auto` 删除覆盖输入，不承诺恢复旧快照。`done=true` 可来自人工标记，或来自会写覆盖的路径（`auto`、纯估值表产品/开启自动覆盖时的报告导入、初始化报告）；撤销/删除报告/关闭自动覆盖会置 `false`，人工标记也可能被覆盖写入或撤销清掉，不能当独立验收。
+易混点：混合产品 `auto_overwrite=false` 且该日没有已有覆盖时，保存报告只供核对，不自动校准系统结果。`auto_overwrite=false` **不能证明该日没有覆盖**：初始化或显式 `auto` 可以在开关关闭时写入覆盖，须读 `auto_reconciled` 确认。开启 `auto_overwrite` 会把已保存报告批量写入覆盖，关闭会移除已有覆盖输入，不是单日开关。`reconciliation.auto` 是明确采用某日的动作；`undo_auto` 删除覆盖输入并按当前剩余输入重算，不读取旧快照，详见[撤销契约](../../reconciliation.md#undo_auto)。`done=true` 可来自人工标记，或来自会写覆盖的路径（`auto`、纯估值表产品/开启自动覆盖时的报告导入、初始化报告）；覆盖写入将其置为 `true`，实际移除覆盖且该日不再有覆盖时置为 `false`，包括人工标记，不能当独立验收。
 
 ## 第 5 步：读回元数据、内容、头寸与对账状态
 

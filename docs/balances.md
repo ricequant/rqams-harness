@@ -16,8 +16,9 @@ Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连�
 
 普通结果是报表对象而非裸 `positions` 列表：
 
-- `classifier=None`：`positions` 为平铺持仓。
-- 非空分类器：`positions` 为通过 `children` 连接的分类树；分类节点含汇总值，不能与叶子持仓重复相加。
+- `classifier=None`：有持仓时 `positions` 为平铺数组，可遍历 `report['positions']`。
+- 非空分类器：`positions` 为一个分类树根对象，不是数组；从 `report['positions']['children']` 进入下层。分类节点含汇总值，不能与叶子持仓重复相加。
+- 服务端原始持仓为空时格式器返回 `{}`，平铺请求也可能收到这个空对象；这与未返回 `positions`、`null` 和结果未就绪不同，不能互相替代。
 - 服务端任务包装（例如 `{"status":"SUCCESS","data":...}`）保持原形；Harness 不擅自拆包。
 
 ### 日期与实时语义
@@ -26,7 +27,7 @@ Python 与 CLI 参数一一对应；连接、等待和公共错误处理见[连�
 - `date=北京时间当天`：同样走实时语义；它不是强制读取日终历史结果的开关。
 - `date=过去日期`：读取历史头寸报表，适合对账和复现。
 - 日期必须是严格的 `YYYY-MM-DD`；未来日期、时间戳和无效日期在客户端以 `invalid_argument` 拒绝。
-- 实时结果的实际业务归属以返回值为准。夜盘可能归属下一交易日，缓存的实时行情也可能早于请求时间；应同时检查返回日期、`update_time`，以及期货/期权是否已取到结算价（持仓 `has_settlement`，根级看 `all_futures_options_has_settlement`）；「结算」的四种含义见[结算类字段词义](fields/balances.md#settlement)。`has_settlement` 为 `false` 只表示这次返回里对应期货/期权合约还没有行情结算价（盘中普遍如此，日终才有），属行情状态，不等于整条结果未就绪——结果是否就绪看 `pending_valuation` 与 `error_messages`。需要结算价的口径据此标注本次结果不含结算价，等行情更新后重读同一操作；不依赖结算价的字段照常交付。两者都不得改用上一交易日概览替代当日结果。
+- 实时快照按产品的监控周期定业务日期：日间周期归当天；估值日周期（`valuation_day`）把夜盘归入之后的日盘，交易日 21:00 起归下一交易日。实时快照摘要的目标日不超过到期日。行情来自已产出的快照，不是以请求时刻为准的原子截面；应同时检查返回日期和 `update_time`。期货/期权持仓的 `has_settlement=false` 只表示此次返回没有该合约的行情结算价，根级对应 `all_futures_options_has_settlement`；见[结算类字段词义](fields/balances.md#settlement)。需要结算价时说明缺口、等行情更新后重读；不依赖结算价的字段照常交付。批量或成员视图的结果未就绪另看 `pending_valuation`、`error_messages`，不能用上一交易日概览替代当日结果。
 
 对明确为日间周期（`realtime_period_type=daytime`）的产品，少数字段的实时请求会返回净值摘要。夜盘或周期未知的产品不会因传了当天日期而误用历史摘要：展示期货冲销项时使用不发送请求日期的实时快照摘要；不展示时使用完整头寸视图。返回形态由客户端按参数选择，不是额外的公开操作。
 
@@ -70,16 +71,33 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 
 ### 返回与字段投影
 
-返回：返回形态共四支，由参数与资源类型选择——`fields=None` 是完整头寸报表，非空 `fields` 是最终结果的顶层字段投影，`include_component_weight_view=True` 是「成员产品 ID → 成员对象」映射，数组形态是「资源 ID → 实时概览」映射加两个诊断键。四支都原样保留服务端的业务日期、`null`、缺失键与任务包装，不把缺失补成 `0`。
+返回由资源数量、成员视图、字段投影与分类参数共同决定：单资源默认是一份报表；`include_component_weight_view=True` 改为「成员产品 ID → 成员报表」映射；资源数组改为「资源 ID → 实时概览」映射。`fields` 再选择各报表的顶层字段，`classifier` 决定其中 `positions` 的形状。这些条件不是互斥的四种模式，例如成员视图也可以同时选择字段和分类。各形态原样保留服务端的业务日期、`null`、缺失键与任务包装，不把缺失补成 `0`。
+
+参数按不同层级起作用，不能只根据函数名假定返回一种结构：
+
+|参数或条件|改变什么|读取位置或结果结构|
+|---|---|---|
+|单个产品或产品组，`fields=None`|返回完整报表|`report['date']`、`report['total_equity']`、`report['positions']` 等；不是裸持仓数组|
+|`fields=['total_equity']`|只保留选中的顶层字段|`{'total_equity': 数值}`；不是裸数值，也没有 `positions`|
+|`fields=['positions']`，`classifier=None`|只保留平铺持仓字段|`{'positions': [持仓对象, ...]}`；原始持仓为空时可能为 `{'positions': {}}`|
+|`fields=['positions']`，`classifier='asset_class'`|按资产分类组织持仓|`{'positions': {'name': ..., 'level_type': ..., 'children': [分类节点或持仓, ...]}}`；其他分类器同样返回根对象，但层级与分组口径不同|
+|实时产品组，`include_component_weight_view=True`|外层改为成员映射|`{成员ID: 成员报表, 'error_messages': {...}, 'pending_valuation': [...]}`；每份成员报表再按 `fields` 和 `classifier` 选择字段及持仓结构|
+|资源数组|外层改为批量实时概览映射|`{资源ID: 概览, 'error_messages': {...}, 'pending_valuation': [...]}`；不能附带分类、历史日期或成员视图参数，不是多份完整持仓报表|
+|`date` 省略或为北京时间当天 / 过去日期|选择实时 / 历史数据源|单资源仍为报表对象；实际日期必须核验，不能仅根据请求日期推断|
+|`drilldown`|改变资产单元是否穿透|不改变平铺数组与分类根对象的选择；历史不支持 `False`，实时缓存限制见下文|
+|`show_futures_sterilisation`|改变期货冲销项及实时查询分支|不负责选择平铺或分类；组合限制见参数表|
+|`benchmark_id`|改变基准收益口径|不负责选择平铺或分类；只接受纯 ID，历史与持仓同时请求的限制见参数表|
+
+上表结构为示意，不是实际业务回执。任务包装存在时，先确认成功状态再进入 `data` 按相同规则处理，Harness 不自动拆包。平铺数组中的资产单元或保证金持仓本身也可能有 `children`，因此不能仅凭某个节点存在 `children` 就断言本次请求用了分类器。空对象只描述持仓字段形状，不能单独证明估值结果完整或产品没有资产。
 
 下表 `{资源 ID}` 是动态键占位符，不是实际 JSON 键。下表只列结构键、条件键和诊断键；净资产与收益字段见[报表顶层字段](#top-level-fields)，不要因为本表未逐行列全就认为报表只有这些字段。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |（根对象）|返回根|object|—|单资源形态为一份头寸报表；成员视图与数组形态为资源 ID → 对象的映射|恒返回；报表经 `fields` 投影后仍是同一层级的对象，不是裸 `positions` 列表|
-|`date`|报表业务日期|string / null|YYYY-MM-DD|本次结果实际归属的业务日期|恒返回；实时分支的归属日由服务端监控周期决定，夜盘不一定等于请求当天；服务端当日无结果而回退默认文档时该键可能缺失|
-|`positions`|持仓明细|array（object 元素）|—|当前口径下的持仓：`classifier` 省略时为平铺持仓，非空时是经 `children` 连接的分类树；元素字段见[持仓明细](fields/balances.md#position)|由参数选择：`fields=None` 或投影含 `positions` 时返回；只接受顶层字段名，传 `positions` 才取得完整持仓结构，`positions.quantity` 这类嵌套路径被拒绝|
-|`positions[].children`|分类子节点|array（object 元素）|—|分类节点挂载的下一层分类或叶子持仓|由参数选择：`classifier` 非空时随分类节点返回；分类节点的汇总量与叶子持仓不能重复相加|
+|`date`|报表业务日期|string / null|YYYY-MM-DD|本次结果实际归属的业务日期；实时归属见[日期与实时语义](#日期与实时语义)|由参数和数据决定：指定 `fields` 时须包含 `date` 才保留它。净值摘要没有目标记录时所选日期键为 `null`；完整头寸视图回退默认空文档时不返回此键。两者都不能证明目标日期估值就绪。|
+|`positions`|持仓明细|array（object 元素） / object|—|`classifier` 省略时为平铺数组，非空时为经 `children` 连接的分类树根对象；原始持仓为空时格式器返回 `{}`；元素字段见[持仓明细](fields/balances.md#position)|由参数选择：`fields=None` 或投影含 `positions` 时返回；只接受顶层字段名，传 `positions` 才取得完整持仓结构，`positions.quantity` 这类嵌套路径被拒绝|
+|`positions.children` / 各层节点的 `children`|分类子节点|array（object 元素）|—|分类树根对象或中间分类节点挂载的下一层分类或叶子持仓；平铺持仓也可能带穿透明细|由参数与数据选择；分类节点的汇总量与叶子持仓不能重复相加|
 |`positions[].level_type`|分类层级字段名|string|—|该节点所在层的索引字段名：根节点是固定顶层标记（`top_level`，服务端写为前后各两个下划线的私有形态），`asset_class` 分类下依次是 `product_accounting_major_subject`、`asset_category`、`asset_class`；部分品种在 `asset_class` 之下还有一层 `gross_direction` 方向父行|由参数选择：`classifier` 非空时只随分类节点返回；叶子持仓记录没有该键，不能用它判断叶子层级；`gross_direction` 只在 `classifier=asset_class` 时出现，见下方方向父行说明|
 |`positions[].summary_kind`|分类汇总类型|string|—|分类节点的汇总口径；当前只在方向父行上取 `gross_direction`|由参数选择：仅 `classifier=asset_class` 的方向父行返回；其它分类节点不带该键|
 |`positions[].direction`|多空方向|string（枚举）|—|方向父行的方向；叶子持仓同名字段见[持仓明细](fields/balances.md#position)|由参数选择：方向父行恒带该键（取值见[多空方向](fields/balances.md#direction)）；资产类父行不带该键，不能据它判断父行是多头还是空头净额|
@@ -282,7 +300,7 @@ rqamsh balances series --resource "授权测试产品" --benchmark-id "000300.XS
 
 ## previous_summary
 
-读取产品或产品组上一交易日的头寸概览。日期由服务端按上一交易日决定，本操作不接受日期参数，因此不会取到当天实时截面冒充已结算概览。
+读取产品或产品组上一交易日的头寸概览。服务端按资源配置的日历选择今天之前的上一个有效日；本操作不接受日期参数，也不读取今日截面代替上一日。
 
 Python 签名：`rqamsh.balances.previous_summary(resource: str)`。
 
@@ -290,16 +308,16 @@ Python 签名：`rqamsh.balances.previous_summary(resource: str)`。
 |---|---|---|---|
 |`resource`|`str`|必填|唯一产品或产品组 ID/名称。|
 
-返回：服务端原始概览对象，不含 `positions`，并按服务端规则附带 `benchmark_returns` 与 `excess_returns`；其余净资产与收益字段见[报表顶层字段](#top-level-fields)。
+返回：服务端原始概览对象，附带 `benchmark_returns` 与 `excess_returns`；其余净资产与收益字段见[报表顶层字段](#top-level-fields)。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|（根对象）|返回根|object|—|上一交易日的头寸概览对象|恒返回；不含 `positions`，需要持仓明细时改用 `get`|
-|`date`|业务日期|string / null|YYYY-MM-DD|该概览归属的业务日期|恒返回；日期由服务端按上一交易日决定，本操作不接受日期参数|
-|`benchmark_returns`|基准收益|number / null|—|该业务日的基准收益|恒返回；服务端按上一交易日规则计算|
-|`excess_returns`|超额收益|number / null|—|当日收益减基准收益|恒返回；与 `benchmark_returns` 同时给出|
+|（根对象）|返回根|object|—|上一交易日的头寸概览对象|成功时返回；正常概览不含 `positions`；目标日超出估值存续范围并回退到空文档时含 `positions: []`，不表示零持仓|
+|`date`|业务日期|string / null|YYYY-MM-DD|该概览归属的业务日期|有目标日概览时返回；空文档无此键|
+|`benchmark_returns`|基准收益|number / null|—|资源所配置基准在目标日的收益|随概览返回；空文档也会附带基准收益，不能据此认定产品估值就绪|
+|`excess_returns`|超额收益|number / null|—|目标日产品或组的收益减基准收益|随概览返回；缺产品或组收益时不可用|
 
-结果检查：核对返回的概览字段与业务日期归属；需要持仓明细时改用 `get`，本操作不返回 `positions`。最低读取级别为 `read_net_value`。
+结果检查：目标日在估值存续范围内但缺结算记录时按[未就绪与缺输入](connection.md#unready-inputs)处理；读到不带日期的空文档时，不把它当作已结算概览。需要持仓明细时用 `get` 并明确日期。
 
 ```python
 result = rqamsh.balances.previous_summary(resource='授权测试产品')
@@ -313,7 +331,7 @@ rqamsh balances previous-summary --resource "授权测试产品"
 
 批量读取多个产品或产品组上一交易日的头寸概览。资源可以是产品与产品组的混合数组，客户端逐项解析后再提交 ID。
 
-与 `previous_summary` 的区别只在数量与失败表达：单项失败不阻塞其余资源，估值尚未就位的资源既不出现在结果键中，也不写入 `error_messages`。
+单项失败不阻塞其余资源：服务端跳过抛出估值未就绪异常的资源，其他异常写入 `error_messages`。无异常但回退空文档的资源仍占一个键，规则见 [`previous_summary`](#previous_summary)。
 
 Python 签名：`rqamsh.balances.previous_summaries(product_or_group_ids: list[str])`。
 
@@ -321,15 +339,15 @@ Python 签名：`rqamsh.balances.previous_summaries(product_or_group_ids: list[s
 |---|---|---|---|
 |`product_or_group_ids`|`list[str]`|必填|非空的产品或产品组 ID/名称数组。|
 
-返回：`{资源 ID}` → 上一交易日概览的映射；成功项形状与 `previous_summary` 相同，失败项收在 `error_messages` 下，估值未就位的资源两处都不出现。下表 `{资源 ID}` 是动态键占位符，不是实际 JSON 键。
+返回：`{资源 ID}` → 上一交易日概览或空文档的映射；失败项收在 `error_messages` 下，因估值未就绪而跳过的资源两处都不出现。下表 `{资源 ID}` 是动态键占位符，不是实际 JSON 键。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |（根对象）|返回根|object|—|资源 ID → 上一交易日概览的映射|恒返回|
-|`{资源 ID}`|概览对象|object|—|单个资源上一交易日的概览，形状与 `previous_summary` 相同：`date`、概览字段与 `benchmark_returns`、`excess_returns`|由数据决定：只有估值就位的资源出现在映射中|
+|`{资源 ID}`|概览对象|object|—|单个资源的 `previous_summary` 结果|由数据决定：正常概览或空文档均可出现在映射中；检查 `date` 与所需字段，不仅检查键是否存在|
 |`error_messages`|失败原因|object（资源 ID → string）|—|按资源 ID 记录该项失败原因|由数据决定：只在存在失败项时出现，无失败项时该键整体不出现；逐项失败容器见[逐项失败容器](connection.md#item-errors)|
 
-结果检查：逐个资源确认是否出现在结果中；缺失且不在 `error_messages` 中说明估值未就位，按[未就绪与缺输入](connection.md#unready-inputs)稍后重试或改查该资源的计算状态，不能当作零头寸。
+结果检查：逐个资源确认是否取得目标日期和所需字段。缺失且不在 `error_messages` 中只说明没有返回该资源的概览；先确认资源仍可访问，再按[未就绪与缺输入](connection.md#unready-inputs)检查估值，不把缺项或空文档当作零头寸。
 
 ```python
 result = rqamsh.balances.previous_summaries(product_or_group_ids=['授权测试产品', '授权测试产品组'])

@@ -9,7 +9,7 @@
 
 ## API 使用约定
 
-Python 与 CLI 完成相同调用，连接与公共错误处理见[连接说明](connection.md)。三个与基准相关的接口都属于**当前工作空间**：自定义基准的可见范围、`benchmarks` 中是否包含自定义基准都由工作空间决定。
+Python 与 CLI 完成相同调用，连接与公共错误处理见[连接说明](connection.md)。基准目录与自定义基准列表只列出当前工作空间可见的自定义基准；查询分时收益时从 [`benchmarks`](#benchmarks) 选择已确认的基准 ID。
 
 - `benchmark_returns` 的 `include_customized` 只在为 `true` 时下发：服务端按字符串真值判断该参数，下发 `false` 会被当作真，从而把自定义基准混进结果，因此 Harness 省略该参数来表达“不含自定义基准”。
 - `benchmark_returns` 的 `start_date` 省略时服务端从 2020-01-01 起算，`end_date` 省略时算到今天；需要精确区间时显式给出。
@@ -41,21 +41,23 @@ Python 签名：`rqamsh.market_data.benchmark_returns(*, benchmark_ids: str | li
 
 ## realtime_benchmark_returns
 取基准当日分时收益。
-- realtime_benchmark_returns：省略基准时由服务端决定返回哪些基准。
+- `realtime_benchmark_returns` 一次查询一个基准；先用 [`benchmarks`](#benchmarks) 确认代码，再显式传入。
 
 Python 签名：`rqamsh.market_data.realtime_benchmark_returns(*, benchmark_id: str | None=None)`。
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
-|`benchmark_id`|`str \| None`|`None`|基准代码；省略时不下发该参数。|
+|`benchmark_id`|`str \| None`|调用时指定|单个基准代码，例如 `000300.XSHG`。省略或传 `None` 都不发送该参数。|
+
+**省略参数的当前实现偏差：** 省略不会像旧版说明所述那样返回全部内置基准。服务端只实现单基准查询，缺少 ID 时进入自定义基准查找并报未找到（HTTP 404），不是空行情结果。取多个基准时，先取目录，再逐个显式查询所需 ID。
 
 返回：分钟级收益数组。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|分钟收益|array（object 元素）|—|每行 `datetime`（分钟时间）与 `minute_return`（number，分钟收益率）|恒返回；当日无数据时为空数组，不能当零收益|
+|`[]`|分钟收益|array（object 元素）|—|每行 `datetime`（分钟时间）与 `minute_return`（number，分钟收益率）|查询成功时返回；内置指数缺分时行情或上一结算日收盘价时为空数组，不能当零收益|
 
-`minute_return` 的口径随基准类型：内置指数与复合基准为相对上一结算日收盘的收益率，[国债类基准](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_yield_curve)为按年化收益率折算的固定日收益。省略基准时由服务端决定返回哪些基准。
+`minute_return` 的口径随基准类型：内置指数为相对上一结算日收盘的收益率，复合基准按配置对成分的同口径收益加权。[国债类基准](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_yield_curve)与固定数值基准按年化收益率折算为固定日收益。复合基准只纳入同时取得分时行情和上一结算日收盘价的成分，不重新归一权重；不能仅凭非空结果认定所有成分均已覆盖。
 
 ## benchmarks
 列出当前空间可用的内置与自定义基准。
@@ -96,6 +98,8 @@ Python 签名：`rqamsh.market_data.create_customized_benchmark(name: str, type:
 |`remarks`|`str \| None`|`None`|备注；省略时不下发。|
 |`weights`|`list[dict[str, Any]] \| None`|`None`|复合基准的权重块数组，必须非空。|
 |`rates`|`float \| None`|`None`|固定数值基准的收益率，必须为非负数值。|
+
+**创建推荐：** 未指定类型时以 `composite` 为起点，但成分、权重和生效日期必须按业务补齐，不能提交空权重。无备注时省略 `remarks`，不要传空字符串（SDK 会拒绝）；明确需要 `fixed_rates` 时可采用 `rates=0` 作为零收益基准，其他年化收益率按实际填写。SDK 不自动补类型或收益率。权重和收益率均传小数：`50%` 权重传 `0.5`，`3%` 年化收益率传 `0.03`；类型切换后只提交对应的 `weights` 或 `rates`，不把示例比例当默认投资配置。
 
 服务端在 Harness 的结构校验之外还有语义校验，失败会明确报错：
 

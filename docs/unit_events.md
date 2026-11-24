@@ -51,6 +51,8 @@ rqamsh unit-events list --resource "授权测试产品" --start-date 2026-01-01 
 ## create
 新增一个或多个手工份额事件。
 
+事件类型、业务日期、份额数量和分类份额没有通用默认值，按实际申赎填写；不默认当天、申购或 `units=0`，也不自动选择第一类份额。没有分类份额的产品省略 `product_share`。
+
 传入单个对象或其非空数组；两种写法发送完全相同的请求体。每项必含 unit_event_type（subscription 或 redemption）、date、units；份额产品还需 product_share。`unit_event_type` 只接受 `subscription` 与 `redemption`，其他值在请求发出前即被拒绝；两种类型必须且只能设置一个份额字段。客户端把 units 折算为服务端的 subscription_units/redemption_units 后提交，源字段 source 由服务端固定为 manual，不接受手工提交（查询返回里的 `auto` 是折叠值，见[份额事件来源](fields/unit_events.md#uniteventsource)）。
 
 服务端逐项处理：能解析的事件写入并计入 effect_count，解析失败的事件按序号写入 err_msg（缺少日期、日期格式错误、未指定申购/赎回份额），两者可以同时出现。约束违规不是逐项错误：申购与赎回同时给出、份额产品缺 product_share、估值报告数据源产品等会整批失败。批量接口不返回新记录 ID，插入后请用 `list` 取回。
@@ -71,7 +73,7 @@ Python 签名：`rqamsh.unit_events.create(resource: str, data: dict[str, Any] |
 |`effect_count`|实际写入条数|integer|条|本批成功写入的份额事件条数|有可写入事件时才返回；批量接口不返回新记录 ID，须用 `list` 取回|
 |`err_msg`|逐项解析失败说明|array（string 元素）|—|按提交顺序说明第几个事件为何失败（缺日期、日期格式错误、未指定申购/赎回份额）|存在解析失败项时才返回；见[逐项失败容器](connection.md#item-errors)|
 
-结果检查：核对 effect_count 与提交条数；出现部分失败时按 err_msg 的序号定位问题事件，修正后只重发失败项，避免重复写入已成功的事件。
+结果检查：核对 `effect_count` 与提交条数。有有效事件时，从有效事件的最早日期提交重算；没有有效事件时不提交。部分失败时已写入事件不回滚，按 `err_msg` 定位并修正后只重发确认未写入的事件。
 
 ```python
 result = rqamsh.unit_events.create(
@@ -106,7 +108,7 @@ Python 签名：`rqamsh.unit_events.update(resource: str, unit_event_id: str, da
 |---|---|---|---|---|---|
 |`effect_count`|实际修改条数|integer|条|本次实际修改的事件条数|恒返回；提交内容与现值相同时为 `0`，不代表事件不存在；见[写入结果](connection.md#write-result)|
 
-结果检查：用 `list` 复核该事件的份额与来源；把申购改成赎回时两个字段都要显式给出，否则会被服务端按「只设置一个」规则拒绝。
+结果检查：用 `list` 复核该事件的份额与来源；把申购改成赎回时两个字段都要显式给出，否则会被服务端按「只设置一个」规则拒绝。通过校验的修改即使内容未变化，也会按事件日期提交重算。
 
 ```python
 result = rqamsh.unit_events.update(
@@ -130,13 +132,13 @@ Python 签名：`rqamsh.unit_events.delete(resource: str, unit_event_ids: list[s
 |`resource`|`str`|必填|产品唯一 ID 或名称。|
 |`unit_event_ids`|`list[str]`|必填|非空手工事件 ID 数组；空数组在发送前即被拒绝。|
 
-返回：服务端原始 `effect_count`；自动事件保存在另一处，传自动事件 ID 不会命中。
+返回：服务端原始 `effect_count`。有手工事件命中且最早命中日期通过校验时，删除这些事件，并从该日期提交重算；没有命中时不删除、不提交重算。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|本次实际删除的手工事件条数|恒返回；ID 不存在或指向自动事件时为 `0`；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|目标产品内本次实际删除的手工事件条数|恒返回；不存在、属于其他产品或指向自动事件的 ID 不计入，重复 ID 只计一次；无命中时为 `0`；见[写入结果](connection.md#write-result)|
 
-结果检查：删除前确认 ID 来自 source 为 manual 的记录；删除不可撤销并触发必要重算，可用 `list` 重新确认事件与份额变动已消失。
+结果检查：删除前确认 ID 来自目标产品中 `source=manual` 的记录，并留存原事件；删除不可撤销。用 `list` 复核事件是否已移除，有提交重算时再核对该日及后续份额；同日仍有其他事件时，`unit_changes` 仍会记录当天的剩余变动。
 
 ```python
 result = rqamsh.unit_events.delete(resource='授权测试产品', unit_event_ids=['6a1f4c2e9b3d4f5a6b7c8d90'])

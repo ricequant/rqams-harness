@@ -79,6 +79,8 @@ rqamsh custom-instruments get --instrument-id "0123456789abcdef01234567"
 在指定产品下创建自定义标的。
 [完整字段](fields/custom_instruments.md)。创建时必须给出归属产品：当前服务端没有无归属产品的创建入口（按流水自动建档的标的同样归属导入产品），归属后只能改绑（见 [update](#update)），不能解除；归属产品的价格变更重算范围见 [upload_fairvalue](#upload_fairvalue)。相同工作空间、品种、代码和归属产品组合重复会失败。list 不返回 fair_values，get 才包含完整历史。
 
+归属产品、资产类别、代码和名称没有通用推荐值，必须来自用户目标或实际业务资料，不默认 `stock`、不随意生成代码、不沿用其他产品。没有公允价文件时只登记标的，不补零价格；需要价格时按下文的增量或全量覆盖规则另行写入。
+
 Python 签名：`rqamsh.custom_instruments.create(resource: str, asset_class: str, order_book_id: str, symbol: str)`。
 
 |参数|类型|默认/必填|语义|
@@ -105,7 +107,7 @@ rqamsh custom-instruments create --resource "授权测试产品" --asset-class "
 ```
 
 ## update
-局部修改自定义标的基础字段，不修改价格历史。
+局部修改自定义标的基础字段，不修改价格历史，也不提交估值重算。
 
 Python 签名：`rqamsh.custom_instruments.update(instrument_id: str, *, resource: str | None=None, asset_class: str | None=None, order_book_id: str | None=None, symbol: str | None=None)`。
 
@@ -142,11 +144,11 @@ Python 签名：`rqamsh.custom_instruments.delete(instrument_ids: list[str])`。
 |---|---|---|---|
 |`instrument_ids`|`list[str]`|必填|非空自定义标的记录 ID 数组，不接受资产代码。|
 
-返回：服务端原始 `effect_count`；具体删除约束由服务端执行。
+返回：服务端原始 `effect_count`。删除标的及其记录内的价格历史，不提交估值重算。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|本次实际删除的标的数|恒返回；客户端预检只保证 ID 在当前空间可见并能解析归属产品，真正删除约束由服务端执行，故 `effect_count` 可能小于提交条数，须用实际值核对本批结果，不承诺与提交条数相等；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|本次实际删除的标的数|恒返回；重复 ID 只计一次，预检后已被其他操作删除的记录不计入；见[写入结果](connection.md#write-result)|
 
 操作检查：先逐项确认记录 ID、产品归属和删除授权，保存需要留存的价格历史。任一 ID 无法匹配当前空间记录时，客户端不提交整批删除；成功后核对 `effect_count` 与 `list`，不能把未匹配记录当作已删除。
 
@@ -160,9 +162,11 @@ rqamsh custom-instruments delete --instrument-ids '["0123456789abcdef01234567"]'
 
 ## upload_fairvalue
 上传公允价文件，覆盖文件最早日期起的全部历史价格。
-公允价变更会提交相关产品重算：有归属产品从价格最早日开始；历史共享标的会影响持有它的产品，起点与最早持有日期有关。上传价格不做汇率换算，应事先核对价格币种。不要上传空价格文件；空文件不保证是无操作。文件中每个日期只保留一条价格，不依赖重复日期的覆盖优先级；上传后用 get 核对历史。若要明确清空全部价格，使用 replace_fairvalues 的空数组并确认清空授权。
+上传价格不做汇率换算，应事先核对价格币种。空文件或只有表头的文件会在写入前报解析错误，不改变价格、不提交重算，不返回 `effect_count=0` 的成功回执。文件中每个日期只保留一条价格，不依赖重复日期的覆盖优先级。要清空全部价格，使用 [`replace_fairvalues`](#replace_fairvalues) 的空数组并确认清空授权。
 
 文件列为“日期”“公允价格”。只保留文件最早日期之前的旧价，最早日期及以后全部旧价由文件记录替换；文件没有包含的后续日期也会丢失。这不是逐日期增量更新。
+
+价格历史实际改写时才发起重算请求：有归属标的只提交其归属产品，请求起点是文件最早价格日；无归属的历史标的按持仓记录中同代码匹配产品，每个产品从其最早匹配持仓日提交，没有匹配持仓则不提交。实际估值区间仍受[重算规则](index.md#valuation-recompute)限制。
 
 Python 签名：`rqamsh.custom_instruments.upload_fairvalue(instrument_id: str, file_path: str)`。
 
@@ -171,11 +175,11 @@ Python 签名：`rqamsh.custom_instruments.upload_fairvalue(instrument_id: str, 
 |`instrument_id`|`str`|必填|自定义标的记录 ID。|
 |`file_path`|`str`|必填|本地价格文件路径，按原文件上传；不做汇率换算。|
 
-返回：服务端原始 `effect_count`；相关产品可能被重算。
+返回：服务端原始 `effect_count`，不含重算状态。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际覆盖的标的数|integer|条|本次实际覆盖价格历史的标的数：写入成功为 `1`|恒返回；文件没有可解析的价格行时服务端直接返回 `0`，既不覆盖历史也不提交重算，写入结果与现存价格相同时也是 `0`；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际覆盖的标的数|integer|条|本次价格历史记录被改写为 `1`，未改写为 `0`|恒返回；例如覆盖后的存储记录与现值相同为 `0`，不提交重算；见[写入结果](connection.md#write-result)|
 
 操作检查：上传前保存旧价格，确认文件非空、日期唯一，并包含最早日期之后所有需要保留的价格。返回后用 get 对照完整历史；再检查关联产品估值，不能仅凭 effect_count 宣称价格已反映到头寸报表。
 
@@ -190,7 +194,9 @@ rqamsh custom-instruments upload-fairvalue --instrument-id "0123456789abcdef0123
 ## replace_fairvalues
 全量替换公允价历史，空数组表示清空，遗漏日期不会保留。
 
-提交完整 `[{'date':'YYYY-MM-DD','value':数字}]` 数组；`[]` 明确清空历史。所有希望保留的日期必须一起提交。价格不自动换算币种，变更会提交相关产品重算，需读回历史价格并核对估值。
+提交完整 `[{'date':'YYYY-MM-DD','value':数字}]` 数组；`[]` 明确清空历史。所有希望保留的日期必须一起提交，每个日期只保留一条价格。价格不自动换算币种。
+
+价格历史实际改写后，有归属标的只对归属产品发起重算请求：非空数组以**本次提交的最早价格日**为请求起点，不取被删除旧价的日期；空数组未指定起算日，按最近估值增量计算，不会从被清空的最早价格日主动重建历史。无归属历史标的按[价格文件导入](#upload_fairvalue)的最早匹配持仓日提交，不区分数组是否为空。
 
 Python 签名：`rqamsh.custom_instruments.replace_fairvalues(instrument_id: str, data: list[dict[str, Any]])`。
 
@@ -199,14 +205,13 @@ Python 签名：`rqamsh.custom_instruments.replace_fairvalues(instrument_id: str
 |`instrument_id`|`str`|必填|自定义标的记录 ID。|
 |`data`|`list[dict[str, Any]]`|必填|完整价格数组，每项含 date（YYYY-MM-DD）和 value（数值）。|
 
-返回：服务端原始 `effect_count` 与逐项 `err_msg`；可能触发相关产品重算，需另行核对估值结果；`err_msg` 非空时抛部分失败异常。
+返回：服务端原始 `effect_count`。整个数组覆盖写入，不返回逐项成功或失败结果。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际修改条数|integer|条|本次实际覆盖价格历史的标的数：写入成功为 `1`|恒返回；提交的完整数组与现存价格完全相同时为 `0`，此时不提交重算；见[写入结果](connection.md#write-result)|
-|`err_msg`|逐项错误说明|array（string 元素） / null|—|按提交顺序说明哪一条价格为何未写入（如日期重复）|客户端在返回后调用 `partial_failure` 校验：`err_msg` 非空即抛 `partial_failure` 并保留完整结果，说明部分价格已写入，不能盲目整批重试；见[逐项失败容器](connection.md#item-errors)|
+|`effect_count`|实际修改条数|integer|条|本次价格历史记录被改写为 `1`，未改写为 `0`|恒返回；服务端比较实际存储记录，未改写则不提交重算；见[写入结果](connection.md#write-result)|
 
-操作检查：data 是完整目标历史，不是增量补丁；提交前核对所有保留日期，空数组须有清空授权。返回后用 get 比对 fair_values，并检查关联产品的重算状态及受影响日期头寸报表；抛 `partial_failure` 时按 `err_msg` 只重发失败项，避免覆盖已成功写入的价格。
+操作检查：提交前保存旧价并核对所有保留日期。返回后用 `get` 比对 `fair_values`，再查关联产品的计算状态及受影响日期头寸。若应更正的历史日期早于自动请求起点，或清空后需要重建历史，不要重复替换价格来补算；确认需更正的日期、封账边界和重算授权后，另用 [`products.recompute`](products.md#recompute) 指定受影响起点。
 
 ```python
 import json
@@ -239,7 +244,7 @@ Python 签名：`rqamsh.custom_instruments.insert_fairvalues(resource: str, data
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|新增记录 ID|string|—|本次实际新插入的通用公允价记录 ID；同日同标的已存在的记录按更新处理，不计入|恒返回；提交项全部命中已有记录时为空数组；只有写入结果会出现在这里，服务端是否受理重算不体现在返回值中|
+|`[]`|新增记录 ID|string|—|本次实际新插入的通用公允价记录 ID；命中已有记录的项不计入|恒返回；提交项全部命中已有记录时为空数组，仍按本次最早日期发起重算请求|
 
 操作检查：空数组在客户端被拒绝，不会发出请求，也不会起到清空作用（清空请用 `replace_fairvalues`）。返回的 ID 数量小于提交条数说明部分记录被更新；服务端判定为重复创建时返回错误，应先用 [`balances.get`](balances.md#get) 核对该日期已有记录。本块 `get(instrument_id)` 读取的是 `customized_instruments/{id}`，只能核对自定义标的的 `fair_values`，不适用于产品级通用公允价记录，不能用它核对。写入后检查产品重算状态与受影响日期的头寸报表。
 
