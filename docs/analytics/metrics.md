@@ -16,8 +16,32 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
 |`start_date`|`str \| None`|`None`|YYYY-MM-DD；省略使用资源起始日。|
 |`end_date`|`str \| None`|`None`|YYYY-MM-DD；省略使用最近结算日，且受产品到期日限制。|
-|`benchmark`|`str \| None`|`None`|可选基准，格式为“类型,代码”。|
+|`benchmark`|`str \| None`|`None`|省略时使用产品或产品组已配置的基准；显式覆盖用“类型,ID”，例如 `index,000300.XSHG`。其他类型和 ID 从[当前空间可用基准](../market_data.md#benchmarks)核对。|
 |`extra_indicators`|`list[str] \| None`|`None`|额外指标名称数组。|
+
+<a id="indicator-inputs"></a>
+
+### 从每日头寸到区间指标
+
+#### 输入整理与日历
+
+1. **取输入。** 产品侧读取逐日头寸报表摘要，单产品另取区间开始日前的基点净值；有可用的当日实时截面时可并入。统计侧另取[基准收益、日历和无风险利率](#external-inputs)。这是服务端取数，调用方无需另外连接 RQData。没有头寸摘要或基准时可返回 `{}`，不表示零收益。
+2. **对齐日期。** 头寸摘要先与自然日基准日期对齐：净资产、总资产和单位净值的缺口沿用之前的值，头寸日收益缺失按 `0`，累计单位净值不在此步补齐。收益样本再按产品或产品组日历取日期，分析区间受起始日、到期日及实际基准范围限制；净值按 AMS 精度舍入后参与计算。
+3. **形成收益样本。** 单产品的累计单位净值和单位净值两列均有有效值时，剩余净值缺口用后续有效值补齐。日收益取「当日累计单位净值 − 上一估值日累计单位净值」除以「上一估值日单位净值」；首日用区间前一自然日的基点净值，对应基点缺失或为零时按 `1`。周、月收益用相同的净值差口径取各周期的期初和期末，不是累计净值相除。产品组或缺上述净值的单产品，日频使用整理后的头寸日收益，周、月收益由周期内的日增长倍数连乘再减 `1`；基准周、月收益也按此法聚合。周按周日结束，月按月末，年按年末分组；首尾可为不完整周期。
+
+#### 收益概览与风险统计
+
+- **风险统计按同一套方法读。** `daily_risk`、`weekly_risk`、`monthly_risk` 分别使用相应频率下的配对产品收益与基准收益；`annual_risk` 按年组织这些样本，并取该年区间的无风险利率。Alpha、Sharpe、波动、回撤、跟踪误差等由 [RQRISK](https://github.com/ricequant/rqrisk) 的 [`Risk` 实现](https://github.com/ricequant/rqrisk/blob/1.0.13/rqrisk/risk.py)计算。AMS 决定传入的样本、频率和无风险利率，并额外组装年化收益、单利年化和卡马尔比率等字段。源码链接用于查统计实现；接口的输入口径和返回字段仍以本页为准。
+- **区间收益先区分输出用途。** `returns_summary.total` 是收益概览：单产品有可用净值时，从整个区间的基点和期末累计单位净值求差，再除以基点单位净值。`{frequency}_risk.total_returns` 是对应频率的收益连乘。在使用同一组对齐后日收益的分支（如产品组），`returns_summary.total` 与 `daily_risk.total_returns` 都是日收益连乘；走净值差分支时，两者可能不同，例如分红使单位净值与累计单位净值分离。不能只凭字段都叫「区间累计收益」就直接替换。
+- **需要核对样本时再取序列。** 在 `extra_indicators` 中选 `asset_series` 和 `benchmark_series`，核对相同频率下两边的日期和收益。`asset_series.daily[].daily_returns` 是整理后的指标日收益，不是[原始头寸时序](../balances.md#series)中的同名字段；日期对齐补出的行也不证明当日头寸参与了计算。
+
+<a id="indicator-sample-coverage"></a>
+
+#### 当日样本覆盖
+
+请求 `end_date` 包含当日但快照未并入时，基准对齐仍可能生成当日行，缺失的头寸日收益会补为 `0`。返回当日行、当日收益为 `0` 或 HTTP 200，都不能单独证明当日已纳入计算。
+
+用户要求「本周截至当前」等含实时的结论时，将指标日序列与同一对象的[当日头寸报表](../balances.md#get)交叉核对，不因单一净值字段为 `null` 或两种日收益口径不同就断言缺数据。截面尚未就绪时，按[未就绪规则](../connection.md#unready-inputs)有界等待并重读原指标请求；截面可读但仍无法确认已纳入时，保留两份回执并报告覆盖缺口，不擅自改截止日或以自算结果替换接口值。若另算描述性统计，单列来源、公式和实际样本范围。
 
 <a id="indicators-returns"></a>
 
@@ -32,8 +56,9 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 - 指标行中的头寸输入均链接到[头寸字段字典](../fields/balances.md#balance-calculation)：该页是字段定义、逐仓/估值计算、精度和业务输入的唯一来源。本页只解释指标如何选取、对齐或聚合这些字段。
 - 路径相对于 Python `result` 根对象；`.` 表示对象层级，`[]` 表示数组元素。重复指标合并说明：`{frequency}` 分别代入 `daily`、`weekly`、`monthly`；`{period_frequency}` 仅代入 `weekly`、`monthly`。两者都不是实际 JSON 键，也不表示把多个频率的结果合成一个值。例如 `{frequency}_risk.alpha` 对应 `daily_risk.alpha`、`weekly_risk.alpha`、`monthly_risk.alpha`。年度风险另有动态年份 `{year}`，例如 `annual_risk.2025.daily_risk.alpha`；年/月/周收益树节点仍逐项展开。
 - “随父级返回”以父级确实存在且相应数据有效为前提，不代表无条件必有。未请求的额外区块不返回；缺失键、`null`、空对象和空数组不能解释为数值 0。
-- 比例用小数表示，`0.01 = 1%`；金额为估值币种金额；净值、杠杆及风险比率不直接按百分数展示。样本不足、零分母及非有限数值见下文异常数值说明。
-- 用于比较业绩时，应同时展示区间、频率和基准。`n` 为该频率样本数，`F` 为该频率年化因子，`R=prod(1+r) - 1`，`B=prod(1+b) - 1`，`Ra=(1+R)^(F/n) - 1`，`Ba=(1+B)^(F/n) - 1`，`f` 为年化无风险利率，`f_p=(1+f)^(1/F) - 1`；`std`、`var`、`cov` 分别为样本标准差、方差、协方差（分母 `n - 1`），`C=[1,cumprod(1+r)]`，`cumprod` 为累计连乘，`running_max` 为截至当期的最高值。
+- 比例用小数表示，`0.01 = 1%`；金额为估值币种金额；净值、杠杆及风险比率不直接按百分数展示。样本不足、零分母及非有限数值见[口径与异常值](#口径与异常值)。
+- `NAV`／`AccNAV` 分别表示[单位净值](../fields/balances.md#unit-net-value)／[累计单位净值](../fields/balances.md#acc-unit-net-value)。`[起点]` 是区间收益基点，`[期初]`、`[期末]` 是对应周期的起止端点。
+- 用于比较业绩时，应同时展示区间、频率和基准。`r`、`b` 分别是对应频率的产品或产品组收益序列、基准收益序列；`n` 为该频率样本数，`F` 为该频率年化因子。`R=prod(1+r) - 1`，`B=prod(1+b) - 1`，`Ra=(1+R)^(F/n) - 1`，`Ba=(1+B)^(F/n) - 1`，`f` 为[年化无风险利率](#external-inputs)，`f_p=(1+f)^(1/F) - 1`；`std`、`var`、`cov` 分别为样本标准差、方差、协方差（分母 `n - 1`），`C=[1,cumprod(1+r)]`，`cumprod` 为累计连乘，`running_max` 为截至当期的最高值。
 - 年度风险中的 `r`、`b`、`n` 使用该年的分组数据，周/月仍沿用服务端周期归属；`R_daily`、`n_daily` 使用该年与请求区间交集的日序列。`dividend_ratio` 和复用整个请求区间的换手率按各自行说明。
 
 |返回字段路径|中文名称|JSON 类型|返回条件|计算公式 / 结构|备注|
@@ -56,7 +81,7 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`{frequency}_risk.excess_annual_volatility`|年化超额收益波动率|number / null|随父级对象返回|`std(r-b)*sqrt(F)`|—|
 |`{frequency}_risk.annual_tracking_error`|年化跟踪误差|number / null|随父级对象返回|`std(r-b)*sqrt(F)`|基准全 NaN 时 NaN|
 |`{frequency}_risk.geometric_excess_max_drawdown`|几何超额最大回撤|number / null|随父级对象返回|对 `cumprod(1+r)/cumprod(1+b)`（含初始 1）求最大回撤|—|
-|`{frequency}_risk.total_returns`|区间累计收益率|number / null|随父级对象返回|`R`|该频率收益连乘；`returns_summary.total` 对有可用净值的单产品使用期初、期末累计净值差法，而不是连乘各期收益。发生分红等导致累计净值与单位净值分离时，两种公式可得出不同数值|
+|`{frequency}_risk.total_returns`|区间累计收益率|number / null|随父级对象返回|`R`|该频率收益连乘；与 `returns_summary.total` 的关系见[收益概览与风险统计](#收益概览与风险统计)|
 |`{frequency}_risk.total_geometric_excess_return`|区间几何超额收益率|number / null|随父级对象返回|`(1+R)/(1+B) - 1`|—|
 |`{frequency}_risk.total_arithmetic_excess_return`|区间算术超额收益率|number / null|随父级对象返回|`R-B`|与逐期算术超额连乘不同|
 |`{frequency}_risk.total_annual_returns`|日频区间累计收益折算的年化收益率|number / null|随父级对象返回|所有频率统一引用 `(1+R_daily)^(D/n_daily) - 1`，`D=交易252/自然365`|—|
@@ -92,7 +117,7 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`annual_risk.{year}.{frequency}_risk.dividend_ratio`|股票分红率|number / null|随父级对象返回|请求年份范围内 `sum(stock_dividend_amount)` / 该年范围最后自然日 `(cn_stock_market_value+hk_stock_market_value)`|不是平均股票市值，也不含产品分红。金额全为零时可能无结果；金额缺失或无效时可能提示估值未就绪，零分母为空值；来源 [stock_dividend_amount](../fields/balances.md#balancedailysummary) 与[股票市值字段](../fields/balances.md#balance-calculation)。|
 |`annual_risk.{year}.{frequency}_risk.annual_twoside_turnover_rate`|年化双边换手率|number / null|随父级对象返回|同 returns_summary.annual_twoside_turnover_rate|复用整个请求区间值，不是按年独立重算|
 |`returns_summary`|区间收益概览|object|extra_indicators 包含 returns_summary|含以下十个字段|需 extra_indicators 选择 returns_summary|
-|`returns_summary.total`|区间累计收益|number / null|随父级对象返回|单产品且提供累计单位净值时 `(AccNAV[期末] - AccNAV[起点]) / NAV[起点]`<br>&emsp;否则日收益累乘|`annual` 使用252/365，`annual_simple_interest` 使用250/365|
+|`returns_summary.total`|区间累计收益|number / null|随父级对象返回|单产品有可用累计单位净值和单位净值时 `(AccNAV[期末] - AccNAV[起点]) / NAV[起点]`<br>&emsp;否则日收益连乘减 1|见[收益概览与风险统计](#收益概览与风险统计)|
 |`returns_summary.this_week`|向前一周的滚动收益|number / null|随父级对象返回|从区间末日回看 1 周的滚动窗口|并非本自然周|
 |`returns_summary.this_month`|向前一月的滚动收益|number / null|随父级对象返回|从区间末日回看 1 月的滚动窗口|并非本自然月|
 |`returns_summary.this_quarter`|向前三月的滚动收益|number / null|随父级对象返回|从区间末日回看 3 月的滚动窗口|并非本自然季度|
@@ -106,8 +131,8 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`asset_series.daily`|日频记录列表|array（object）|随 asset_series 返回|按日频排列的日期记录|不是“日期 → 值”映射；空序列为 []|
 |`asset_series.weekly`|周频记录列表|array（object）|随 asset_series 返回|按周频排列的日期记录|不是“日期 → 值”映射；空序列为 []|
 |`asset_series.monthly`|月频记录列表|array（object）|随 asset_series 返回|按月频排列的日期记录|不是“日期 → 值”映射；空序列为 []|
-|`asset_series.{frequency}[].date`|业务日期|string|随父级记录返回|日频为当日；周/月频为实际周期末日|日期随产品日历及可用数据，不假定为完整周/月|
-|`asset_series.daily[].daily_returns`|日收益率|number / null|随父级记录返回|r_daily；净值差法或头寸报表 [daily_returns](../fields/balances.md#daily-returns)|按本操作输入整理规则|
+|`asset_series.{frequency}[].date`|业务日期|string|随父级记录返回|日频为样本日期；周/月频为实际周期末日|不假定为完整周/月；当日行不证明实时头寸已纳入，见[当日样本覆盖](#indicator-sample-coverage)|
+|`asset_series.daily[].daily_returns`|日收益率|number / null|随父级记录返回|`r_daily`；净值差法或整理后的头寸报表 [daily_returns](../fields/balances.md#daily-returns)|见[输入整理与日历](#输入整理与日历)|
 |`asset_series.daily[].period_net_value`|计算用净值|number / null|随父级记录返回|提供累计单位净值时取后向补齐的 [acc_unit_net_value](../fields/balances.md#acc-unit-net-value)；否则 cumprod(1+r_daily)|不是所有分支都等于单位净值|
 |`asset_series.daily[].cumulative_returns`|累计收益率|number / null|随父级记录返回|提供累计单位净值时 (AccNAV[当日]−AccNAV[起点])/NAV[起点]；否则 cumprod(1+r_daily)−1|—|
 |`asset_series.{frequency}[].unit_net_value`|单位净值|number / null|随父级记录返回|取整理后同日/周期末头寸报表 [unit_net_value](../fields/balances.md#unit-net-value)|保留缺失，不假定三种净值相同|
@@ -193,30 +218,7 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`ashares_market_value.sz_market_value`|深市股票市值|number|随父级对象返回|最后可用头寸报表 cn_sz_stock_market_value|[股票市值](../fields/balances.md#balance-calculation)|
 |`ashares_market_value.sz_market_value_prev`|深市前20日平均市值|number|随父级对象返回|T-20 至 T-1 的 cn_sz_stock_market_value 合计/20|交易所交易日回看；缺日仍除 20，不是最近20条记录均值|
 
-<a id="indicator-inputs"></a>
-
-#### 数据链与变量
-
-- 指标建立在逐日头寸报表、盈亏和净值序列上，可能包含可用实时截面；不是把流水金额简单相加。行情、汇率、权益与托管事件、份额变化、公允价及[估值表覆盖](../reconciliation.md#valuation-report-overwrite)影响头寸字段；字段定义、计算、精度和输入链只见[头寸字段字典](../fields/balances.md#balance-calculation)。
-- 指标公式使用的头寸字段：`Equity[当日]` → [total_equity](../fields/balances.md#total-equity)，`PnL[当日]` → [daily_pnl](../fields/balances.md#daily-pnl)，`NAV[当日]` → [unit_net_value](../fields/balances.md#unit-net-value)，`AccNAV[当日]` → [acc_unit_net_value](../fields/balances.md#acc-unit-net-value)。
-- `Return[当日]` 是当前整理频率下的产品/组周期收益，日频时为该日收益；`r` 表示该周期收益序列。`b_t` 是同日历、同频率的基准周期收益，`b` 表示对应基准收益序列；`f` 为年化无风险利率，来源见[外部输入](#external-inputs)。
-- `[上一估值日]` 是整理后序列的上一估值时点；`[期初]`、`[期末]` 为选定统计区间端点；`[起点]` 是该分支采用的收益计算基点。`AccNAV[当日] - 1` 是减一，`AccNAV[上一估值日]` 是取历史值，二者不能混用。
-- 公式符号：`prod` 连乘，`sum` 求和，`abs` 绝对值，`mean` 平均数。`buy_amount`、`sell_amount`、`stock_dividend_amount`、市值、风险市值和申赎字段均链接本页各指标行或[头寸字段字典](../fields/balances.md#balance-calculation)，不在指标页重述其估值或流水计算。
-
-#### 输入整理与日历
-
-1. 无头寸报表摘要或无基准数据时可能返回 `{}`；不表示零收益。拿到空对象时按[未就绪与缺输入](../connection.md#unready-inputs)分清是头寸报表摘要尚未产出还是缺基准或其它输入。分析区间受产品开始日、到期日及实际基准范围限制；没有合法日历日期时会报错。
-2. 头寸报表摘要与自然日基准日期对齐；[total_equity](../fields/balances.md#total-equity)、[total_assets](../fields/balances.md#total-assets)、[unit_net_value](../fields/balances.md#unit-net-value) 缺口使用之前的值，[daily_returns](../fields/balances.md#daily-returns) 缺失按 0。累计净值不在此步补齐。
-3. 交易日产品只保留交易所日历，自然日产品保留自然日；净值按 AMS 精度舍入后参与指标计算。精度位数和字段自身的舍入顺序见[头寸字段字典](../fields/balances.md#balance-calculation)，本页不另作假定或客户端重算。
-4. 单产品有有效累计净值和单位净值时，净值空缺先用后续有效值补齐；再用 `Return[当日] = (AccNAV[当日] - AccNAV[上一估值日]) / NAV[上一估值日]`。请求区间前一天净值为起点，缺失或零基点按 1。周/月收益为 `(期末累计净值-期初累计净值)/期初单位净值`，**不是累计净值相除**。产品组及无上述净值的产品使用 [daily_returns](../fields/balances.md#daily-returns) 连乘。
-5. 周按周日结束，月按月末，年按年末分组。结果可含不完整周/月；比较不同区间时应检查实际起止日期。
-6. 日频风险（包括波动和 Sharpe）的年化因子按日历取交易日 252 / 自然日 365；周频和月频仍为 52 和 12。`total_annual_returns` 取日频区间收益按 252 / 365 复利折算；`annual_simple_interest` 使用交易日 250 / 自然日 365。
-
-当区间包含当日实时结果时，请求 `end_date` 和返回行的日期不证明当日截面已经参与计算。服务端合并可用实时截面；截面尚不可用时可能只取得历史输入，随后按上述对齐规则生成当日行，将缺失 `daily_returns` 补为0。因此，返回当日收益0不证明真实无涨跌，HTTP 200也不保证当日风险与收益已覆盖。
-
-用户要求“本周截至当前”等包含实时的结论时，按需请求 `asset_series` 核对实际日期、收益与净值输入，并与同一对象的当日[头寸报表](../balances.md#get)交叉检查；不因单个净值字段为 `null` 就断言缺数据。若当日截面尚未就绪，按[未就绪规则](../connection.md#unready-inputs)有界等待并重读原指标请求；若截面已可读而指标仍不一致，保留两份回执并报告差异，不把指标当日0用于完整风险结论，也不擅自改截止日或替换服务端返回值。调用方需要基于已核验日收益另算描述性统计时，单列来源、公式、实际覆盖与样本限制，不把派生统计称为该接口原生结果。
-
-`alpha` 表示扣除基准暴露及无风险收益后的年化收益，`beta` 表示相对基准的敏感度，Sharpe 用波动衡量收益风险比，回撤衡量区间内由高点到低点的跌幅。跟踪误差描述与基准收益差异的波动；`information_ratio` 使用本表明确口径，不能替换成另一种常见定义。
+#### 口径与异常值
 
 alpha、beta、Sharpe、information_ratio 至少需 2 期；不足时不可作为有效比较结果。波动、下行风险和跟踪误差不足 2 期时返回的 `0` 不代表已观察到零波动。收益低于 -100%、基准净值为零或零分母等输入可产生非有限数值；若计算生成 `NaN` 或正负无穷并进入正常 JSON 响应，服务端将其编码为 `null`。`null` 不指明具体失败原因，也不同于无样本导致的缺键；不要补零或用于排名。
 
@@ -227,25 +229,36 @@ alpha、beta、Sharpe、information_ratio 至少需 2 期；不足时不可作�
 指数增强特殊口径：仅单产品、策略 `index_enhanced` 且请求 `start_date` 等于 `trading_start_date` 时，指定超额指标从交易起始日**下一交易所交易日**起算，以交易起始日结算单位/累计净值为基点；绝对收益不因此改变。缺基点、后续头寸报表摘要或基准时不应用此调整。比较指增产品时，应核对区间是否触发该口径。
 
 
-#### 复算所需的外部输入
-
-##### 可复算边界
-
-国债曲线、基准成分及历史行情修订、日历、场外价格（[基金净值](https://www.ricequant.com/doc/rqdata/python/fund-mod#rqdata-API-fund-get_nav)）、汇率时点（[港币汇率](https://www.ricequant.com/doc/rqdata/python/stock-hk#rqdata-API-get_exchange_rate_hk)）、权益到账规则（[股票分红](https://www.ricequant.com/doc/rqdata/python/stock-mod#rqdata-API-get_dividend)）、托管及份额事件、资产单元穿透、组权重/调仓和历史估值结果均不包含在一次指标返回中。做对账或审计时，应保存请求区间、产品/组配置、头寸报表序列、基准及相关行情、实际返回；仅凭流水 `price*quantity` 无法复算全部指标。不能复核时明确说明缺少哪些数据，并请求用户或 AMS 管理员协助，不要修改公式来凑齐结果。
-
 <a id="external-inputs"></a>
 
-##### 外部数据与非持仓来源
+#### 数据来源与复算边界
+
+##### 产品侧：AMS 头寸摘要
+
+[头寸报表](../fields/balances.md#balance-calculation)提供净值和原始日收益，后者不一定等于整理后的指标日收益。杠杆取总资产和净资产；换手率取产品或组的[买入金额](../fields/balances.md#buy-amount)、[卖出金额](../fields/balances.md#sell-amount)及平均净资产；年度股票分红率取摘要里的[股票分红到账金额](../fields/balances.md#balancedailysummary)和各年区间末的股票市值；沪深市值取摘要中的沪深股票市值，RQData 交易日历只用于选取 T−20 至 T−1 的窗口。计算和缺值规则仍见各字段行。
+
+[行情、汇率和公司行动](../fields/balances.md#position-inputs)，以及人工公允价、托管及份额事件、组权重和[估值表覆盖](../reconciliation.md#valuation-report-overwrite)，是**形成头寸摘要的上游输入**。例如年度股票分红率不直接用 RQData 公告分红重算，换手率也不用指数成交额或简单汇总原始流水来替代。
+
+##### 统计侧：基准、日历和无风险利率
+
+|输入|来源及用法|
+|---|---|
+|指数基准收益与成交额|[RQData `get_price`](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi) 取 `frequency="1d"`、`adjust_type="pre"` 的 `close`、`total_turnover`，向前多取一个交易日作为首日比较基点；收盘点位按日历前向填充后取涨跌幅。缺当日日线时可从可用的[行情快照](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-current_snapshot)补入当日点位及成交额。周/月成交额按日金额求和，不取均值或年化。|
+|国债与固定收益基准|国债基准用 [RQData `get_yield_curve`](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_yield_curve) 的 `1Y` 曲线，按日期对齐并沿用前值；固定收益基准用[自定义基准配置](../market_data.md#customized_benchmarks)的年化 `rates`。两者按 `(1+年利率)^(1/D) − 1` 日化，交易日口径 `D=252`、自然日口径 `D=365`，不提供市场成交额。|
+|复合基准|成分和生效权重取自 AMS [自定义基准配置](../market_data.md#customized_benchmarks)，不是产品持仓比例，也不是 RQData 的指数成分权重。服务端对配置成分取前复权行情，按生效时段加权日收益；支持时也加权成交额。缺价可前后填充；特殊债券成分不参与该成分行情计算，包含它们的时段不提供基准成交额。|
+|交易日历|按产品或组所设日历确定指标样本日期；交易日口径的日期及回看基点依赖 [RQData `get_trading_dates`](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates) 和 [`get_previous_trading_date`](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_previous_trading_date)。这与单产品区间前一自然日的净值基点不是一回事。|
+|无风险利率 `f`|取 [RQData `get_yield_curve`](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_yield_curve) 的中债国债曲线，剔除含缺值的期限列，按区间自然日跨度选不超过该跨度的可用期限，取该列首个观测值；不是固定用国债基准的 `1Y`。曲线为空才按 `0`；非空但无可选期限时尝试取 `0S`，列缺失会报错，不能自行按 `0` 复算。|
+
+**复核指标和追溯估值是两件事。** 先固定对象、区间、日历和实际基准，保存请求、回执、用于复核的头寸摘要及基点；对风险统计可按需取得 `asset_series`、`benchmark_series` 交叉核对。复算依赖利率的指标还要知道当时使用的 `f`，或从当时的曲线按同口径还原。基准收益也可能因缺行情而补 `0`，`indicators` 不返回逐成分缺行情告警；仅凭回执不能证明行情完整。只有要解释头寸摘要为什么不同，才继续沿头寸字段追溯行情、事件、估值覆盖等输入。缺基点、原始行情或配置时，列明复算缺口，不用当前数据或自定口径替代。
+
+##### 本页其他操作的输入
+
+以下基差、标的指数贡献用于 [`long_short_returns`](#long_short_returns)，申赎字段用于 [`series`](#series)，不是 `indicators` 的计算输入。
+
 |英文字段|中文名称|实际计算|备注|
 |---|---|---|---|
-|`f`|年化无风险利率|[RQData get_yield_curve](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_yield_curve)(start_date,end_date) 获取中债国债收益率曲线，数值为小数年利率，例如 `0.02` 表示 2%；删除含缺值的期限列，按区间自然日跨度选择不长于区间的可用期限，取该列首个观测值|源曲线为 `None` 或空表才按 0 利率计算。非空曲线过滤后若没有可选期限，当前实现尝试读取 `0S` 列；该列缺失时指标请求报错，应报告曲线缺口，不自行以 0 利率复算。|
-|`b_t`|基准周期收益|预设指数：前复权 `close` 按日历对齐前向填充后 `pct_change`，读取起点前一交易日；收益缺失补 0。<br>&emsp;国债基准：固定取曲线 1Y，沿用前值后按 `(1+y)^(1/D) - 1`，`D=交易252/自然365`。<br>&emsp;固定收益基准：配置 `rates` 按 `(1+rates)^(1/D) - 1`。<br>&emsp;组合基准（[指数权重](https://www.ricequant.com/doc/rqdata/python/indices-mod#rqdata-API-index_weights_ex)）：按生效时段合计 `sum(weight_i×成分日收益_i)`，成分来自前复权 `close`。|指数用 [get_price](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi) `frequency="1d", adjust_type="pre", fields=["close","total_turnover"]`，今日可追加快照；服务端补 0 不证明真实零收益。国债基准期限不同于 `f`。固定利率无市场成交额；组合权重是用户配置，不是持仓权重，成交额支持时加权；缺失处理可含前后填充，特殊债券成分可能不提供成交额。|
-|`benchmark_series.daily[].total_turnover`<br>`benchmark_series.weekly[].total_turnover`<br>`benchmark_series.monthly[].total_turnover`|基准成交额|[RQData get_price](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi) 返回的指数 `total_turnover`（日成交额）；周/月按日金额相加，不取均值，也不年化|是市场/基准成交额，不能用产品 `buy_amount`/`sell_amount` 替代，也不是成交量 volume；无支持数据时可不返回|
-|`trading_dates`|[RQData get_trading_dates](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_trading_dates)|`get_trading_dates` 确定交易日序列、起点基准和沪深 T-20/T-1 窗口|数据选择不改变各风险字段的年化因子|
-|`previous_trading_date`|[RQData get_previous_trading_date](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_previous_trading_date)|`get_previous_trading_date` 确定交易日序列、起点基准和沪深 T-20/T-1 窗口|数据选择不改变各风险字段的年化因子|
 |`basis_returns`|基差变化收益贡献外部输入|[RQData futures.get_basis](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_basis)(fields=['settle_basis','open','index'])；其 index 指定标的再取 [get_price](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)(fields=['close','open'])；[instruments](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments).contract_multiplier|`settle_basis` 为结算基差；开盘基差=期货 open-指数 open。需要日期和合约对应关系，不能仅凭一张 positions 表复算，另有上文跨合约 shift 限制|
 |`underlying_returns`|对应标的指数变化贡献外部输入|[RQData futures.get_basis](https://www.ricequant.com/doc/rqdata/python/futures-mod#rqdata-API-futures-get_basis)(fields=['settle_basis','open','index'])；其 index 指定标的再取 [get_price](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-get_price-genericapi)(fields=['close','open'])；[instruments](https://www.ricequant.com/doc/rqdata/python/generic-api#rqdata-API-instruments).contract_multiplier|`settle_basis` 为结算基差；开盘基差=期货 open-指数 open。需要日期和合约对应关系，不能仅凭一张 positions 表复算，另有上文跨合约 shift 限制|
-|`buy_amount`|买入金额|由[头寸报表计算](../fields/balances.md#balance-calculation)提供，继续依赖[头寸输入](../fields/balances.md#position-inputs)|人工公允价、托管报告、初始化、历史修订不是 RQData；与查询区间内流水可能无法一一对应|
 |`subscription_amount`|申购/投入金额|见[四项申赎字段](#series-inputs)，直接汇总事件和现金类流水|不是投资收益，不需要靠证券行情计算；托管事件与份额事件可分别由 `custodian_events.list` 与 `unit_events.list` 查询（见 [custodian_events](../custodian_events.md)、[unit_events](../unit_events.md)），但不能宣称单靠公开 API 已取得全部源记录|
 |`redemption_amount`|赎回/撤出金额|见[四项申赎字段](#series-inputs)，直接汇总事件和现金类流水|不是投资收益，不需要靠证券行情计算；托管事件与份额事件可分别由 `custodian_events.list` 与 `unit_events.list` 查询（见 [custodian_events](../custodian_events.md)、[unit_events](../unit_events.md)），但不能宣称单靠公开 API 已取得全部源记录|
 |`subscription_units`|申购份额|见[四项申赎字段](#series-inputs)，直接汇总事件和现金类流水|不是投资收益，不需要靠证券行情计算；托管事件与份额事件可分别由 `custodian_events.list` 与 `unit_events.list` 查询（见 [custodian_events](../custodian_events.md)、[unit_events](../unit_events.md)），但不能宣称单靠公开 API 已取得全部源记录|
