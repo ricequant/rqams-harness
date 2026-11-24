@@ -1,0 +1,3996 @@
+{
+  "provenance": {
+    "kind": "人工构造业务输入、独立教学产品上的真实受控 SDK 执行；非自主 Agent 执行",
+    "collected_date": "2026-11-20",
+    "redaction": "部署、身份、空间、账号不公开；实体和外部键统一替换别名",
+    "limitations": [
+      "短历史日期链，不证明盘中端到端时延",
+      "证券估值价未向独立行情源审计",
+      "其他模板、币种、夜盘、资产单元、撤销和部分失败分支未全部触发"
+    ]
+  },
+  "lanes": {
+    "history": {
+      "product": {
+        "id": "<P-history>",
+        "name": "教学产品-history",
+        "data_source": "trade",
+        "start_date": "2026-06-26",
+        "maturity_date": "2026-07-01",
+        "unit_policy": "auto_prev_unit_net_value",
+        "auto_overwrite": null,
+        "calendar": "exchange"
+      },
+      "stages": {
+        "historical": {
+          "total": 3,
+          "trades": [
+            {
+              "_id": "<T-history-1>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-1>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-history-2>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100,
+              "price": 10,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-2>",
+              "estimated_delta_cash": -1005
+            },
+            {
+              "_id": "<T-history-3>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-26 09:30:00",
+              "trading_date": "2026-06-26",
+              "transaction_type": "cash_in",
+              "asset_class": "current_deposit",
+              "order_book_id": "CNY",
+              "settlement_amount": 1000000,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-3>",
+              "estimated_delta_cash": 1000000
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000.0,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000019.0,
+              "total_liabilities": 0,
+              "total_equity": 1000019.0,
+              "units": 1000000.0,
+              "unit_net_value": 1.000019,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998995,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998995.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 1005,
+                  "fair_value": 10.24,
+                  "market_value": 1024.0
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000073.0,
+              "total_liabilities": 0,
+              "total_equity": 1000073.0,
+              "units": 1000000.0,
+              "unit_net_value": 1.000073,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60,
+                  "cost": 530,
+                  "fair_value": 10.05,
+                  "market_value": 603.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000079.6,
+              "total_liabilities": 0,
+              "total_equity": 1000079.6,
+              "units": 1000000.0,
+              "unit_net_value": 1.0000796,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60,
+                  "cost": 530,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                }
+              ]
+            }
+          }
+        },
+        "corrected": {
+          "total": 4,
+          "trades": [
+            {
+              "_id": "<T-history-4>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "600036.XSHG",
+              "quantity": 100,
+              "price": 20,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-4>",
+              "estimated_delta_cash": -2005
+            },
+            {
+              "_id": "<T-history-1>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-1>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-history-2>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-2>",
+              "estimated_delta_cash": -1325
+            },
+            {
+              "_id": "<T-history-3>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-26 09:30:00",
+              "trading_date": "2026-06-26",
+              "transaction_type": "cash_in",
+              "asset_class": "current_deposit",
+              "order_book_id": "CNY",
+              "settlement_amount": 1000000,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-3>",
+              "estimated_delta_cash": 1000000
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000.0,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000.0,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1001499.0,
+              "total_liabilities": 0,
+              "total_equity": 1001499.0,
+              "units": 1000000.0,
+              "unit_net_value": 1.001499,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997145,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997145.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.5,
+                  "market_value": 3550.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1001548.8,
+              "total_liabilities": 0,
+              "total_equity": 1001548.8,
+              "units": 1000000.0,
+              "unit_net_value": 1.0015488000000001,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997145,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997145.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.91,
+                  "market_value": 3590.9999999999995
+                }
+              ]
+            }
+          }
+        },
+        "repeated": {
+          "total": 4,
+          "trades": [
+            {
+              "_id": "<T-history-4>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "600036.XSHG",
+              "quantity": 100,
+              "price": 20,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-4>",
+              "estimated_delta_cash": -2005
+            },
+            {
+              "_id": "<T-history-1>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-1>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-history-2>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-2>",
+              "estimated_delta_cash": -1325
+            },
+            {
+              "_id": "<T-history-3>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-26 09:30:00",
+              "trading_date": "2026-06-26",
+              "transaction_type": "cash_in",
+              "asset_class": "current_deposit",
+              "order_book_id": "CNY",
+              "settlement_amount": 1000000,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-3>",
+              "estimated_delta_cash": 1000000
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000.0,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000.0,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1001499.0,
+              "total_liabilities": 0,
+              "total_equity": 1001499.0,
+              "units": 1000000.0,
+              "unit_net_value": 1.001499,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997145,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997145.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.5,
+                  "market_value": 3550.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1001548.8,
+              "total_liabilities": 0,
+              "total_equity": 1001548.8,
+              "units": 1000000.0,
+              "unit_net_value": 1.0015488000000001,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997145,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997145.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.91,
+                  "market_value": 3590.9999999999995
+                }
+              ]
+            }
+          }
+        },
+        "incremental": {
+          "total": 5,
+          "trades": [
+            {
+              "_id": "<T-history-5>",
+              "product_id": "<P-history>",
+              "datetime": "2026-07-01 10:00:00",
+              "trading_date": "2026-07-01",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 20,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-5>",
+              "estimated_delta_cash": 235
+            },
+            {
+              "_id": "<T-history-4>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "600036.XSHG",
+              "quantity": 100,
+              "price": 20,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-4>",
+              "estimated_delta_cash": -2005
+            },
+            {
+              "_id": "<T-history-1>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-1>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-history-2>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-2>",
+              "estimated_delta_cash": -1325
+            },
+            {
+              "_id": "<T-history-3>",
+              "product_id": "<P-history>",
+              "datetime": "2026-06-26 09:30:00",
+              "trading_date": "2026-06-26",
+              "transaction_type": "cash_in",
+              "asset_class": "current_deposit",
+              "order_book_id": "CNY",
+              "settlement_amount": 1000000,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-history-3>",
+              "estimated_delta_cash": 1000000
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000.0,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000.0,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1001499.0,
+              "total_liabilities": 0,
+              "total_equity": 1001499.0,
+              "units": 1000000.0,
+              "unit_net_value": 1.001499,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997145,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997145.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.5,
+                  "market_value": 3550.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1001580.6,
+              "total_liabilities": 0,
+              "total_equity": 1001580.6,
+              "units": 1000000.0,
+              "unit_net_value": 1.0015806,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997380,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997380.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60,
+                  "cost": 615,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.91,
+                  "market_value": 3590.9999999999995
+                }
+              ]
+            }
+          }
+        }
+      },
+      "inputs": {
+        "historical-upload": [
+          {
+            "datetime": "2026-06-26 09:30:00",
+            "transaction_type": "cash_in",
+            "asset_class": "current_deposit",
+            "order_book_id": "CNY",
+            "settlement_amount": 1000000,
+            "commission": 0,
+            "tax": 0,
+            "other_fees": 0,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-3>"
+          },
+          {
+            "datetime": "2026-06-29 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 100,
+            "price": 10,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-2>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "sell",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 40,
+            "price": 12,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-1>"
+          }
+        ],
+        "batch-upsert": [
+          {
+            "datetime": "2026-06-26 09:30:00",
+            "transaction_type": "cash_in",
+            "asset_class": "current_deposit",
+            "order_book_id": "CNY",
+            "settlement_amount": 1000000,
+            "commission": 0,
+            "tax": 0,
+            "other_fees": 0,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-3>"
+          },
+          {
+            "datetime": "2026-06-29 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 120,
+            "price": 11,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-2>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "sell",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 40,
+            "price": 12,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-1>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "600036.XSHG",
+            "quantity": 100,
+            "price": 20,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-4>"
+          }
+        ],
+        "batch-repeat": [
+          {
+            "datetime": "2026-06-26 09:30:00",
+            "transaction_type": "cash_in",
+            "asset_class": "current_deposit",
+            "order_book_id": "CNY",
+            "settlement_amount": 1000000,
+            "commission": 0,
+            "tax": 0,
+            "other_fees": 0,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-3>"
+          },
+          {
+            "datetime": "2026-06-29 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 120,
+            "price": 11,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-2>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "sell",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 40,
+            "price": 12,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-1>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "600036.XSHG",
+            "quantity": 100,
+            "price": 20,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-4>"
+          }
+        ],
+        "incremental-upload": [
+          {
+            "datetime": "2026-07-01 10:00:00",
+            "transaction_type": "sell",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 20,
+            "price": 12,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-history-5>"
+          }
+        ]
+      },
+      "receipts": {
+        "historical-upload": [
+          {
+            "id": "<T-history-3>"
+          },
+          {
+            "id": "<T-history-2>"
+          },
+          {
+            "id": "<T-history-1>"
+          }
+        ],
+        "batch-upsert": [
+          {
+            "id": "<T-history-3>"
+          },
+          {
+            "id": "<T-history-2>"
+          },
+          {
+            "id": "<T-history-1>"
+          },
+          {
+            "id": "<T-history-4>"
+          }
+        ],
+        "batch-repeat": [
+          {
+            "id": "<T-history-3>"
+          },
+          {
+            "id": "<T-history-2>"
+          },
+          {
+            "id": "<T-history-1>"
+          },
+          {
+            "id": "<T-history-4>"
+          }
+        ],
+        "incremental-upload": [
+          {
+            "id": "<T-history-5>"
+          }
+        ]
+      },
+      "compute_observations": [
+        {
+          "stage": "historical:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:5",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:6",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:7",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:8",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:9",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "historical:state:10",
+          "response": {
+            "state": "normal",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "corrected:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "corrected:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "corrected:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "corrected:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "corrected:state:5",
+          "response": {
+            "state": "normal",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "repeated:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "repeated:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "repeated:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "repeated:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "repeated:state:5",
+          "response": {
+            "state": "normal",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "incremental:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "incremental:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "incremental:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "incremental:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "incremental:state:5",
+          "response": {
+            "state": "normal",
+            "execution_id": 4
+          }
+        }
+      ],
+      "recovery_reports": {},
+      "initial_failure": {
+        "type": "RuntimeError",
+        "code": null,
+        "status": null
+      },
+      "initial_failure_explanation": "采集器错误地要求纯流水产品返回auto_overwrite=false，实际为null；创建后即停止，未提交业务输入；恢复时复用原创建对象并重新核验所有权，未重复创建。",
+      "failures": []
+    },
+    "mixed": {
+      "product": {
+        "id": "<P-mixed>",
+        "name": "教学产品-mixed",
+        "data_source": "trade_and_valuation_report",
+        "start_date": "2026-06-26",
+        "maturity_date": "2026-07-01",
+        "unit_policy": "auto_prev_unit_net_value",
+        "auto_overwrite": false,
+        "calendar": "exchange"
+      },
+      "stages": {
+        "first": {
+          "total": 1,
+          "trades": [
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100,
+              "price": 10,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1005
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000019.0,
+              "total_liabilities": 0,
+              "total_equity": 1000019.0,
+              "units": 1000000,
+              "unit_net_value": 1.000019,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998995,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998995.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 1005,
+                  "fair_value": 10.24,
+                  "market_value": 1024.0
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000000.0,
+              "total_liabilities": 0,
+              "total_equity": 1000000.0,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998995,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998995.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 1005,
+                  "fair_value": 10.05,
+                  "market_value": 1005.0000000000001
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000011.0,
+              "total_liabilities": 0,
+              "total_equity": 1000011.0,
+              "units": 1000000,
+              "unit_net_value": 1.000011,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998995,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998995.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 1005,
+                  "fair_value": 10.16,
+                  "market_value": 1016.0
+                }
+              ]
+            }
+          }
+        },
+        "before-report": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999954.0,
+              "total_liabilities": 0,
+              "total_equity": 999954.0,
+              "units": 1000000,
+              "unit_net_value": 0.999954,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 999962.8,
+              "total_liabilities": 0,
+              "total_equity": 999962.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999628,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                }
+              ]
+            }
+          }
+        },
+        "recovery-1-preflight": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999954.0,
+              "total_liabilities": 0,
+              "total_equity": 999954.0,
+              "units": 1000000,
+              "unit_net_value": 0.999954,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 999962.8,
+              "total_liabilities": 0,
+              "total_equity": 999962.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999628,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                }
+              ]
+            }
+          }
+        },
+        "saved-only": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999903.8,
+              "total_liabilities": 0,
+              "total_equity": 999903.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999038,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998675,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998675.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999954.0,
+              "total_liabilities": 0,
+              "total_equity": 999954.0,
+              "units": 1000000,
+              "unit_net_value": 0.999954,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 999962.8,
+              "total_liabilities": 0,
+              "total_equity": 999962.8,
+              "units": 1000000,
+              "unit_net_value": 0.9999628,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999150,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999150.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                }
+              ]
+            }
+          }
+        },
+        "recovery-2-preflight": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999828.8,
+              "total_liabilities": 0,
+              "total_equity": 999828.8,
+              "units": 1000000,
+              "unit_net_value": 0.9998288000000001,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998600,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998600.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999879.0,
+              "total_liabilities": 0,
+              "total_equity": 999879.0,
+              "units": 1000000,
+              "unit_net_value": 0.999879,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999075,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999075.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 999887.8,
+              "total_liabilities": 0,
+              "total_equity": 999887.8,
+              "units": 1000000,
+              "unit_net_value": 0.9998878,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999075,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999075.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                }
+              ]
+            }
+          }
+        },
+        "adopted": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999828.8,
+              "total_liabilities": 0,
+              "total_equity": 999828.8,
+              "units": 1000000,
+              "unit_net_value": 0.9998288000000001,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998600,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998600.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999879.0,
+              "total_liabilities": 0,
+              "total_equity": 999879.0,
+              "units": 1000000,
+              "unit_net_value": 0.999879,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999075,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999075.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 999887.8,
+              "total_liabilities": 0,
+              "total_equity": 999887.8,
+              "units": 1000000,
+              "unit_net_value": 0.9998878,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999075,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999075.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                }
+              ]
+            }
+          }
+        },
+        "continued": {
+          "total": 3,
+          "trades": [
+            {
+              "_id": "<T-mixed-3>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-07-01 10:00:00",
+              "trading_date": "2026-07-01",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "600036.XSHG",
+              "quantity": 100,
+              "price": 20,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-3>",
+              "estimated_delta_cash": -2005
+            },
+            {
+              "_id": "<T-mixed-2>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-30 10:00:00",
+              "trading_date": "2026-06-30",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40,
+              "price": 12,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-2>",
+              "estimated_delta_cash": 475
+            },
+            {
+              "_id": "<T-mixed-1>",
+              "product_id": "<P-mixed>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 120,
+              "price": 11,
+              "commission": 5,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "open_api",
+              "account": "教学交易账户",
+              "foreign_id": "<外部键-mixed-1>",
+              "estimated_delta_cash": -1325
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 999828.8,
+              "total_liabilities": 0,
+              "total_equity": 999828.8,
+              "units": 1000000,
+              "unit_net_value": 0.9998288000000001,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 998600,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 998600.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 120,
+                  "cost": 1325,
+                  "fair_value": 10.24,
+                  "market_value": 1228.8
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 999879.0,
+              "total_liabilities": 0,
+              "total_equity": 999879.0,
+              "units": 1000000,
+              "unit_net_value": 0.999879,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999075,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 999075.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.05,
+                  "market_value": 804.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1001473.8,
+              "total_liabilities": 0,
+              "total_equity": 1001473.8,
+              "units": 1000000,
+              "unit_net_value": 1.0014738,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 997070,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 997070.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 80,
+                  "cost": 850,
+                  "fair_value": 10.16,
+                  "market_value": 812.8
+                },
+                {
+                  "order_book_id": "600036.XSHG",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100,
+                  "cost": 2005,
+                  "fair_value": 35.91,
+                  "market_value": 3590.9999999999995
+                }
+              ]
+            }
+          }
+        }
+      },
+      "inputs": {
+        "seed-report": {
+          "date": "2026-06-26",
+          "total_equity": 1000000,
+          "units": 1000000,
+          "unit_net_value": 1.0,
+          "acc_unit_net_value": 1.0,
+          "positions": [
+            {
+              "order_book_id": "CNY",
+              "asset_class": "current_deposit",
+              "direction": "long",
+              "quantity": 1000000,
+              "market_value": 1000000,
+              "symbol": "活期存款"
+            }
+          ]
+        },
+        "first-sync": [
+          {
+            "datetime": "2026-06-29 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 100,
+            "price": 10,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-mixed-1>"
+          }
+        ],
+        "revision-and-new": [
+          {
+            "datetime": "2026-06-29 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 120,
+            "price": 11,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-mixed-1>"
+          },
+          {
+            "datetime": "2026-06-30 10:00:00",
+            "transaction_type": "sell",
+            "asset_class": "stock",
+            "order_book_id": "000001.XSHE",
+            "quantity": 40,
+            "price": 12,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-mixed-2>"
+          }
+        ],
+        "late-report-save": {
+          "date": "2026-06-29",
+          "total_equity": 999828.8,
+          "units": 1000000,
+          "unit_net_value": 0.9998288000000001,
+          "acc_unit_net_value": 0.9998288000000001,
+          "positions": [
+            {
+              "order_book_id": "CNY",
+              "asset_class": "current_deposit",
+              "direction": "long",
+              "quantity": 998600,
+              "market_value": 998600,
+              "symbol": "活期存款"
+            },
+            {
+              "order_book_id": "000001.XSHE",
+              "asset_class": "stock",
+              "direction": "long",
+              "quantity": 120,
+              "cost": 1325,
+              "fair_value": 10.24,
+              "market_value": 1228.8,
+              "symbol": "平安银行"
+            }
+          ]
+        },
+        "late-report-save-corrected": {
+          "date": "2026-06-29",
+          "total_equity": 999828.8,
+          "units": 1000000,
+          "unit_net_value": 0.9998288000000001,
+          "acc_unit_net_value": 0.9998288000000001,
+          "positions": [
+            {
+              "order_book_id": "CNY",
+              "asset_class": "current_deposit",
+              "direction": "long",
+              "quantity": 998600,
+              "market_value": 998600,
+              "symbol": "活期存款"
+            },
+            {
+              "order_book_id": "000001.XSHE",
+              "asset_class": "stock",
+              "direction": "long",
+              "quantity": 120,
+              "cost": 1325,
+              "cost_price": 11.041666666666666,
+              "fair_value": 10.24,
+              "market_value": 1228.8,
+              "symbol": "平安银行"
+            }
+          ]
+        },
+        "post-report-sync": [
+          {
+            "datetime": "2026-07-01 10:00:00",
+            "transaction_type": "buy",
+            "asset_class": "stock",
+            "order_book_id": "600036.XSHG",
+            "quantity": 100,
+            "price": 20,
+            "commission": 5,
+            "tax": 0,
+            "other_fees": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "account": "教学交易账户",
+            "foreign_id": "<外部键-mixed-3>"
+          }
+        ]
+      },
+      "receipts": {
+        "seed-report": {
+          "effect_count": 1,
+          "err_msg": [],
+          "date": "2026-06-26",
+          "is_modified": false,
+          "valuation_report_id": "<报告-mixed-1>"
+        },
+        "first-sync": [
+          {
+            "id": "<T-mixed-1>"
+          }
+        ],
+        "revision-and-new": [
+          {
+            "id": "<T-mixed-1>"
+          },
+          {
+            "id": "<T-mixed-2>"
+          }
+        ],
+        "late-report-save-corrected": {
+          "effect_count": 1,
+          "err_msg": [],
+          "date": "2026-06-29",
+          "is_modified": false,
+          "valuation_report_id": "<报告-mixed-2>"
+        },
+        "post-report-sync": [
+          {
+            "id": "<T-mixed-3>"
+          }
+        ]
+      },
+      "compute_observations": [
+        {
+          "stage": "seed:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 1
+          }
+        },
+        {
+          "stage": "seed:state:2",
+          "response": {
+            "state": "normal",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "first:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "first:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:5",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:6",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:7",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "first:state:8",
+          "response": {
+            "state": "normal",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "before-report:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:5",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:6",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "before-report:state:7",
+          "response": {
+            "state": "normal",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "recovery-1-preflight:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "saved-only:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "recovery-2-preflight:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "adoption-readback:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "adopted:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "continued:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 6
+          }
+        },
+        {
+          "stage": "continued:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 6
+          }
+        },
+        {
+          "stage": "continued:state:3",
+          "response": {
+            "state": "normal",
+            "execution_id": 6
+          }
+        }
+      ],
+      "recovery_reports": {
+        "recovery-1-reports": [
+          {
+            "date": "2026-06-26",
+            "source": "open_api",
+            "valuation_level": 4,
+            "valuation_report_id": "<报告-mixed-1>"
+          }
+        ],
+        "recovery-2-reports": [
+          {
+            "date": "2026-06-29",
+            "source": "open_api",
+            "valuation_level": 4,
+            "valuation_report_id": "<报告-mixed-2>"
+          },
+          {
+            "date": "2026-06-26",
+            "source": "open_api",
+            "valuation_level": 4,
+            "valuation_report_id": "<报告-mixed-1>"
+          }
+        ]
+      },
+      "initial_failure": {
+        "type": "HarnessError",
+        "code": "http_error",
+        "status": 400
+      },
+      "initial_failure_explanation": "首次报告输入遗漏股票必填cost_price键，服务端400拒绝；只读确认未保存后补足单位成本价。采用后对账查询误用resource参数引发本地TypeError；改为resources数组并只读确认采用，不重放已成功的报告写入或采用。",
+      "saved_reports": [
+        {
+          "date": "2026-06-29",
+          "source": "open_api",
+          "valuation_level": 4,
+          "valuation_report_id": "<报告-mixed-2>"
+        },
+        {
+          "date": "2026-06-26",
+          "source": "open_api",
+          "valuation_level": 4,
+          "valuation_report_id": "<报告-mixed-1>"
+        }
+      ],
+      "adoption_readback": [
+        {
+          "date": "2026-07-01",
+          "auto_reconciled": false,
+          "done": false
+        },
+        {
+          "date": "2026-06-30",
+          "auto_reconciled": false,
+          "done": false
+        },
+        {
+          "date": "2026-06-29",
+          "auto_reconciled": true,
+          "done": true,
+          "unit_net_value": {
+            "ams": 0.9998288000000001,
+            "valuation_report": 0.9998288000000001
+          },
+          "acc_unit_net_value": {
+            "ams": 0.9998288000000001,
+            "valuation_report": 0.9998288000000001
+          }
+        },
+        {
+          "date": "2026-06-26",
+          "auto_reconciled": true,
+          "done": true,
+          "unit_net_value": {
+            "ams": 1.0,
+            "valuation_report": 1.0
+          },
+          "acc_unit_net_value": {
+            "ams": 1.0,
+            "valuation_report": 1.0
+          }
+        }
+      ],
+      "failures": [
+        {
+          "step": "late-report-save:error",
+          "diagnostic": {
+            "type": "HarnessError",
+            "code": "http_error",
+            "status": 400
+          }
+        },
+        {
+          "step": "adoption-readback:error",
+          "diagnostic": {
+            "type": "TypeError",
+            "code": null,
+            "status": null
+          }
+        }
+      ]
+    },
+    "files": {
+      "product": {
+        "id": "<P-files>",
+        "name": "教学产品-files",
+        "data_source": "trade_and_valuation_report",
+        "start_date": "2026-06-26",
+        "maturity_date": "2026-07-01",
+        "unit_policy": "auto_prev_unit_net_value",
+        "auto_overwrite": false,
+        "calendar": "exchange"
+      },
+      "stages": {
+        "morning": {
+          "total": 1,
+          "trades": [
+            {
+              "_id": "<T-files-1>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100.0,
+              "price": 10.0,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "intraday_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": -1000.0
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000024.0,
+              "total_liabilities": 0,
+              "total_equity": 1000024.0,
+              "units": 1000000,
+              "unit_net_value": 1.000024,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999000.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999000.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100.0,
+                  "cost": 1000.0,
+                  "fair_value": 10.24,
+                  "market_value": 1024.0
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000005.0,
+              "total_liabilities": 0,
+              "total_equity": 1000005.0,
+              "units": 1000000,
+              "unit_net_value": 1.000005,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999000.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999000.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100.0,
+                  "cost": 1000.0,
+                  "fair_value": 10.05,
+                  "market_value": 1005.0000000000001
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000016.0,
+              "total_liabilities": 0,
+              "total_equity": 1000016.0,
+              "units": 1000000,
+              "unit_net_value": 1.000016,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999000.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999000.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 100.0,
+                  "cost": 1000.0,
+                  "fair_value": 10.16,
+                  "market_value": 1016.0
+                }
+              ]
+            }
+          }
+        },
+        "afternoon": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-files-2>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 11:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40.0,
+              "price": 12.0,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "intraday_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": 480.0
+            },
+            {
+              "_id": "<T-files-3>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 10:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100.0,
+              "price": 10.0,
+              "commission": 0,
+              "tax": 0,
+              "other_fees": 0,
+              "currency": "CNY",
+              "exchange_rate": 1,
+              "source": "intraday_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": -1000.0
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000094.4,
+              "total_liabilities": 0,
+              "total_equity": 1000094.4,
+              "units": 1000000,
+              "unit_net_value": 1.0000944,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999480.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999480.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 520.0,
+                  "fair_value": 10.24,
+                  "market_value": 614.4
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000083.0,
+              "total_liabilities": 0,
+              "total_equity": 1000083.0,
+              "units": 1000000,
+              "unit_net_value": 1.000083,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999480.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999480.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 520.0,
+                  "fair_value": 10.05,
+                  "market_value": 603.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000089.6,
+              "total_liabilities": 0,
+              "total_equity": 1000089.6,
+              "units": 1000000,
+              "unit_net_value": 1.0000896,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999480.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999480.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 520.0,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                }
+              ]
+            }
+          }
+        },
+        "settled": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-files-4>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40.0,
+              "price": 12.0,
+              "settlement_amount": 475.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": 475.0
+            },
+            {
+              "_id": "<T-files-5>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100.0,
+              "price": 10.0,
+              "settlement_amount": 1005.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": -1005.0
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000084.4,
+              "total_liabilities": 0,
+              "total_equity": 1000084.4,
+              "units": 1000000,
+              "unit_net_value": 1.0000844,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.24,
+                  "market_value": 614.4
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000073.0,
+              "total_liabilities": 0,
+              "total_equity": 1000073.0,
+              "units": 1000000,
+              "unit_net_value": 1.000073,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.05,
+                  "market_value": 603.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000079.6,
+              "total_liabilities": 0,
+              "total_equity": 1000079.6,
+              "units": 1000000,
+              "unit_net_value": 1.0000796,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                }
+              ]
+            }
+          }
+        },
+        "after-rejection": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-files-4>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40.0,
+              "price": 12.0,
+              "settlement_amount": 475.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": 475.0
+            },
+            {
+              "_id": "<T-files-5>",
+              "product_id": "<P-files>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100.0,
+              "price": 10.0,
+              "settlement_amount": 1005.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": -1005.0
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000084.4,
+              "total_liabilities": 0,
+              "total_equity": 1000084.4,
+              "units": 1000000,
+              "unit_net_value": 1.0000844,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.24,
+                  "market_value": 614.4
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000073.0,
+              "total_liabilities": 0,
+              "total_equity": 1000073.0,
+              "units": 1000000,
+              "unit_net_value": 1.000073,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.05,
+                  "market_value": 603.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000079.6,
+              "total_liabilities": 0,
+              "total_equity": 1000079.6,
+              "units": 1000000,
+              "unit_net_value": 1.0000796,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                }
+              ]
+            }
+          }
+        }
+      },
+      "inputs": {
+        "seed-report": {
+          "date": "2026-06-26",
+          "total_equity": 1000000,
+          "units": 1000000,
+          "unit_net_value": 1.0,
+          "acc_unit_net_value": 1.0,
+          "positions": [
+            {
+              "order_book_id": "CNY",
+              "asset_class": "current_deposit",
+              "direction": "long",
+              "quantity": 1000000,
+              "market_value": 1000000,
+              "symbol": "活期存款"
+            }
+          ]
+        }
+      },
+      "receipts": {
+        "seed-report": {
+          "effect_count": 1,
+          "err_msg": [],
+          "date": "2026-06-26",
+          "is_modified": false,
+          "valuation_report_id": "<报告-files-1>"
+        },
+        "morning-import": {
+          "effect_count": 1,
+          "err_msg": []
+        },
+        "afternoon-import": {
+          "effect_count": 2,
+          "err_msg": []
+        },
+        "settlement-import": {
+          "status": "SUCCESS",
+          "progress": 1,
+          "data": {
+            "effect_count": 2,
+            "err_msg": []
+          }
+        },
+        "late-intraday:expected-rejection": {
+          "code": "partial_failure",
+          "details": {
+            "effect_count": 0,
+            "err_msg": [
+              {
+                "line_num": 2,
+                "msg": "不能在已上传过日终结算流水的日期上传日内流水"
+              },
+              {
+                "line_num": 3,
+                "msg": "不能在已上传过日终结算流水的日期上传日内流水"
+              }
+            ]
+          }
+        }
+      },
+      "compute_observations": [
+        {
+          "stage": "seed:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "seed:state:2",
+          "response": {
+            "state": "normal",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "morning:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:5",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:6",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:7",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:8",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "morning:state:9",
+          "response": {
+            "state": "normal",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "afternoon:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "afternoon:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "afternoon:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "afternoon:state:4",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "afternoon:state:5",
+          "response": {
+            "state": "computing",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "afternoon:state:6",
+          "response": {
+            "state": "normal",
+            "execution_id": 4
+          }
+        },
+        {
+          "stage": "settled:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "settled:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "settled:state:3",
+          "response": {
+            "state": "normal",
+            "execution_id": 5
+          }
+        },
+        {
+          "stage": "after-rejection:state:1",
+          "response": {
+            "state": "normal",
+            "execution_id": 5
+          }
+        }
+      ],
+      "recovery_reports": {},
+      "files": {
+        "files-afternoon.xlsx": {
+          "sha256": "6a6c5b617bb5a30f6b4f4157f6b25fb791362c6763ad8fc94f8f2471ea778d0c",
+          "rows": [
+            [
+              "证券代码",
+              "时间",
+              "证券名称",
+              "业务名称",
+              "成交数量",
+              "成交价格",
+              "发生金额"
+            ],
+            [
+              "000001",
+              "2026-06-29 10:00:00",
+              "平安银行",
+              "买入",
+              100,
+              10,
+              1000
+            ],
+            [
+              "000001",
+              "2026-06-29 11:00:00",
+              "平安银行",
+              "卖出",
+              40,
+              12,
+              480
+            ]
+          ]
+        },
+        "files-morning.xlsx": {
+          "sha256": "0de03a1bf2c25b44f8eb35440855a9fa4a938828bd65656dc2bcd9f29cbe6519",
+          "rows": [
+            [
+              "证券代码",
+              "时间",
+              "证券名称",
+              "业务名称",
+              "成交数量",
+              "成交价格",
+              "发生金额"
+            ],
+            [
+              "000001",
+              "2026-06-29 10:00:00",
+              "平安银行",
+              "买入",
+              100,
+              10,
+              1000
+            ]
+          ]
+        },
+        "files-settlement.xlsx": {
+          "sha256": "21ff6263eb64f583a2b5217f55d3579e53e698a2e5da917a269290662b96c0ee",
+          "rows": [
+            [
+              "交易日期",
+              "证券代码",
+              "证券名称",
+              "业务名称",
+              "成交数量",
+              "成交价格",
+              "交易金额",
+              "佣金",
+              "印花税",
+              "其他费",
+              "结算金额",
+              "汇率",
+              "交易所"
+            ],
+            [
+              20260629,
+              "000001",
+              "平安银行",
+              "买入",
+              100,
+              10,
+              1000,
+              5,
+              0,
+              0,
+              1005,
+              1,
+              null
+            ],
+            [
+              20260629,
+              "000001",
+              "平安银行",
+              "卖出",
+              40,
+              12,
+              480,
+              5,
+              0,
+              0,
+              475,
+              1,
+              null
+            ]
+          ]
+        }
+      },
+      "initial_failure": {
+        "type": "HarnessError",
+        "code": "partial_failure",
+        "status": null
+      },
+      "failures": [
+        {
+          "step": "late-intraday:error",
+          "diagnostic": {
+            "type": "HarnessError",
+            "code": "partial_failure",
+            "status": null
+          }
+        }
+      ]
+    },
+    "settlement": {
+      "product": {
+        "id": "<P-settlement>",
+        "name": "教学产品-settlement",
+        "data_source": "trade_and_valuation_report",
+        "start_date": "2026-06-26",
+        "maturity_date": "2026-07-01",
+        "unit_policy": "auto_prev_unit_net_value",
+        "auto_overwrite": false,
+        "calendar": "exchange"
+      },
+      "stages": {
+        "settled": {
+          "total": 2,
+          "trades": [
+            {
+              "_id": "<T-settlement-1>",
+              "product_id": "<P-settlement>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "sell",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 40.0,
+              "price": 12.0,
+              "settlement_amount": 475.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": 475.0
+            },
+            {
+              "_id": "<T-settlement-2>",
+              "product_id": "<P-settlement>",
+              "datetime": "2026-06-29 15:00:00",
+              "trading_date": "2026-06-29",
+              "transaction_type": "buy",
+              "asset_class": "stock",
+              "order_book_id": "000001.XSHE",
+              "quantity": 100.0,
+              "price": 10.0,
+              "settlement_amount": 1005.0,
+              "commission": 5.0,
+              "tax": 0.0,
+              "other_fees": 0.0,
+              "currency": "CNY",
+              "exchange_rate": 1.0,
+              "source": "settlement_upload",
+              "account": "教学交易账户",
+              "estimated_delta_cash": -1005.0
+            }
+          ],
+          "balances": {
+            "2026-06-26": {
+              "date": "2026-06-26",
+              "total_assets": 1000000,
+              "total_liabilities": 0,
+              "total_equity": 1000000,
+              "units": 1000000,
+              "unit_net_value": 1.0,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 1000000,
+                  "cost": 0,
+                  "fair_value": null,
+                  "market_value": 1000000
+                }
+              ]
+            },
+            "2026-06-29": {
+              "date": "2026-06-29",
+              "total_assets": 1000084.4,
+              "total_liabilities": 0,
+              "total_equity": 1000084.4,
+              "units": 1000000,
+              "unit_net_value": 1.0000844,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.24,
+                  "market_value": 614.4
+                }
+              ]
+            },
+            "2026-06-30": {
+              "date": "2026-06-30",
+              "total_assets": 1000073.0,
+              "total_liabilities": 0,
+              "total_equity": 1000073.0,
+              "units": 1000000,
+              "unit_net_value": 1.000073,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.05,
+                  "market_value": 603.0
+                }
+              ]
+            },
+            "2026-07-01": {
+              "date": "2026-07-01",
+              "total_assets": 1000079.6,
+              "total_liabilities": 0,
+              "total_equity": 1000079.6,
+              "units": 1000000,
+              "unit_net_value": 1.0000796,
+              "positions": [
+                {
+                  "order_book_id": "CNY",
+                  "asset_class": "current_deposit",
+                  "direction": "long",
+                  "quantity": 999470.0,
+                  "cost": 0.0,
+                  "fair_value": null,
+                  "market_value": 999470.0
+                },
+                {
+                  "order_book_id": "000001.XSHE",
+                  "asset_class": "stock",
+                  "direction": "long",
+                  "quantity": 60.0,
+                  "cost": 530.0,
+                  "fair_value": 10.16,
+                  "market_value": 609.6
+                }
+              ]
+            }
+          }
+        }
+      },
+      "inputs": {
+        "seed-report": {
+          "date": "2026-06-26",
+          "total_equity": 1000000,
+          "units": 1000000,
+          "unit_net_value": 1.0,
+          "acc_unit_net_value": 1.0,
+          "positions": [
+            {
+              "order_book_id": "CNY",
+              "asset_class": "current_deposit",
+              "direction": "long",
+              "quantity": 1000000,
+              "market_value": 1000000,
+              "symbol": "活期存款"
+            }
+          ]
+        }
+      },
+      "receipts": {
+        "seed-report": {
+          "effect_count": 1,
+          "err_msg": [],
+          "date": "2026-06-26",
+          "is_modified": false,
+          "valuation_report_id": "<报告-settlement-1>"
+        },
+        "settlement-import": {
+          "status": "SUCCESS",
+          "progress": 1,
+          "data": {
+            "effect_count": 2,
+            "err_msg": []
+          }
+        }
+      },
+      "compute_observations": [
+        {
+          "stage": "seed:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "seed:state:2",
+          "response": {
+            "state": "normal",
+            "execution_id": 2
+          }
+        },
+        {
+          "stage": "settled:state:1",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "settled:state:2",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "settled:state:3",
+          "response": {
+            "state": "computing",
+            "execution_id": 3
+          }
+        },
+        {
+          "stage": "settled:state:4",
+          "response": {
+            "state": "normal",
+            "execution_id": 3
+          }
+        }
+      ],
+      "recovery_reports": {},
+      "files": {
+        "settlement-settlement.xlsx": {
+          "sha256": "69f2616693912557f7b906f087f8d2df2c73545dd4219a023dc153f8a8b54eef",
+          "rows": [
+            [
+              "交易日期",
+              "证券代码",
+              "证券名称",
+              "业务名称",
+              "成交数量",
+              "成交价格",
+              "交易金额",
+              "佣金",
+              "印花税",
+              "其他费",
+              "结算金额",
+              "汇率",
+              "交易所"
+            ],
+            [
+              20260629,
+              "000001",
+              "平安银行",
+              "买入",
+              100,
+              10,
+              1000,
+              5,
+              0,
+              0,
+              1005,
+              1,
+              null
+            ],
+            [
+              20260629,
+              "000001",
+              "平安银行",
+              "卖出",
+              40,
+              12,
+              480,
+              5,
+              0,
+              0,
+              475,
+              1,
+              null
+            ]
+          ]
+        }
+      },
+      "initial_failure": null,
+      "failures": []
+    }
+  }
+}

@@ -8,7 +8,7 @@
 
 ## 相关学习案例
 
-[流水更正](demo/historical-trade-correction/README.md)与[估值表导入](demo/valuation-report-reconciliation/README.md)展示如何用凭证核实输入，不把导入成功等同于估值完成。
+[流水更正](demo/trades/correction/openapi/README.md)与[估值表导入](demo/valuation-report-reconciliation/README.md)展示如何用凭证核实输入，不把导入成功等同于估值完成。
 
 ## API 使用约定
 

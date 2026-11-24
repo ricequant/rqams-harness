@@ -6,7 +6,7 @@
 
 ## 相关学习案例
 
-[流水更正](demo/historical-trade-correction/README.md)、[估值表导入](demo/valuation-report-reconciliation/README.md)与[对账案例](demo/reconciliation-controls/README.md)展示如何读回头寸、核对目标日及后续影响；[收益异常定位](demo/returns-diagnosis/README.md)进一步区分当日涨跌、持仓浮亏与产品区间收益，并沿历史输入查因。
+[流水更正](demo/trades/correction/openapi/README.md)、[估值表导入](demo/valuation-report-reconciliation/README.md)与[对账案例](demo/reconciliation-controls/README.md)展示如何读回头寸、核对目标日及后续影响；[收益异常定位](demo/returns-diagnosis/README.md)进一步区分当日涨跌、持仓浮亏与产品区间收益，并沿历史输入查因。
 
 先确认产品已有匹配数据源的流水或估值报告、产品组已配置成员。无数据、字段缺失、等待超时或未就绪时应报告缺口，不输出零净资产结论，也不得改用上一交易日概览或邻近日期报表替代当日结果。需要可重复对账时必须传过去的业务日期；当天和未传日期都是实时语义，不能用来冒充某日的历史结算结果。
 

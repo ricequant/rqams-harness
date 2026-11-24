@@ -148,7 +148,8 @@ record = rqamsh.trades.get(resource="<P 的产品 ID>", trade_id="<记录 _id>")
 |---|---|
 |同一 `_id`、同一外部流水号，只有日期不同，且凭证支持 06-16|日期错记，进入更正计划|
 |多条候选、外部流水号不同|停止，要求按成交编号或成交时间确认，不能都改|
-|列表没查到或只查了主表，但批次 `total_registered < total_parsed`|该批有登记失败项或历史记录在副表：先补失败项、先确认主/副表，不要断言“缺一笔”|
+|当前有效流水没查到对应记录|先核对产品、日期、账户、来源及分页，再对照成交凭证、相关批次的导入凭证和已有本地备份；不能只因列表为空就断言“缺一笔”|
+|批次 `total_registered < total_parsed`|查看逐项失败原因，确认目标成交是否在失败项里；登记条数差异不能直接证明当前缺了这笔|
 |来源是 `intraday_upload`/`settlement_upload`|先判断是否应重传对应文件，不要用结构化 update 绕开文件流程|
 
 ## 第 6 步：计划卡与授权范围
@@ -228,7 +229,7 @@ day_16 = rqamsh.balances.get(
 
 |情况|动作|
 |---|---|
-|只有行情或口述，没有成交凭证、托管对账单或估值表；或 `trades.list` 分页不全、只查主表，凭证 `total_registered < total_parsed`|说明缺什么、影响哪一步、需要补哪份材料；先补全或先修失败项，不判断“缺一笔”|
+|只有行情或口述，没有成交凭证、托管对账单或估值表；或 `trades.list` 分页不全、导入凭证有未核实的失败项|说明缺什么、影响哪一步、需要补哪份材料；先补齐证据、核对当前有效流水与逐项结果，不判断“缺一笔”|
 |读不到 `positions`、净值或份额（权限、`null`、缺日）|报缺口并列已就绪部分，不用相邻日期、上一交易日概览或 0 替代|
 |产品、账户、日期或记录不唯一|停止，列候选让业务确认|
 
@@ -261,4 +262,4 @@ day_16 = rqamsh.balances.get(
 - [计算状态](../../products.md#compute_state)、[产品数据源](../../fields/products.md#data-source)、[份额事件](../../unit_events.md#list)、[导入凭证](../../confirmations.md#list)、[资源权限](../../permissions.md#可见不等于可写)
 - [估值表覆盖](../../reconciliation.md#valuation-report-overwrite)、[等待与未就绪](../../connection.md#unready-inputs)、[任务完成条件](../README.md#task-readiness)
 
-同目录其他案例：[流水导入与历史更正](../historical-trade-correction/README.md)、[估值表导入与结果核对](../valuation-report-reconciliation/README.md)、[对账：从差异定位到业务修正](../reconciliation-controls/README.md)；对象尚未定位时先看[定位空间与目标产品](../workspace-routing/README.md)。
+同目录其他案例：[OpenAPI 流水修改与估值复核](../trades/correction/openapi/README.md#verify-valuation)、[估值表导入与结果核对](../valuation-report-reconciliation/README.md)、[对账：从差异定位到业务修正](../reconciliation-controls/README.md)；对象尚未定位时先看[定位空间与目标产品](../workspace-routing/README.md)。

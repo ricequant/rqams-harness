@@ -1,0 +1,604 @@
+{
+  "provenance": {
+    "kind": "真实测试部署上的受控 SDK 实测；不是自主 Agent 任务证明",
+    "collected_on": "2026-11-20",
+    "input_origin": "人工资金及成交，刻意录入与测试更正目标不同的 T1；不是客户真实错单",
+    "redaction": "实体 ID/名称及外部流水键统一替换；删除部署、身份、账号、录入时间及无关字段。保留业务日期、证券代码、量价、费用、估值数值与执行序号。服务端数据仅作字段投影；离线比较结果另行标注。",
+    "writes": [
+      "新建一个测试产品",
+      "一笔 cash_in",
+      "两笔 buy",
+      "一次仅修改 T1 数量和价格的 update"
+    ],
+    "retained_product": true,
+    "explicit_recompute": false
+  },
+  "prototype": {
+    "id": "<原型产品>",
+    "name": "流水原型产品",
+    "data_source": "trade_and_valuation_report",
+    "start_date": "2023-10-11",
+    "trading_start_date": "2023-10-11",
+    "maturity_date": "2023-10-13",
+    "closing_date": null,
+    "calendar": "exchange",
+    "unit_policy": "auto_prev_unit_net_value",
+    "auto_overwrite": true,
+    "label": "paper",
+    "fee_settings": {},
+    "valuation_settings": {
+      "etf": null,
+      "fut_opt": null,
+      "acc_net_value": "acc_unit_dividend"
+    },
+    "accounts": [
+      {
+        "name": "原型交易账户",
+        "broker": "ricequant",
+        "is_custodian": false
+      }
+    ]
+  },
+  "prototype_compute_state": {
+    "state": "normal",
+    "execution_id": 6
+  },
+  "product": {
+    "id": "<P>",
+    "name": "流水更正教学产品",
+    "data_source": "trade_and_valuation_report",
+    "start_date": "2026-06-26",
+    "trading_start_date": "2026-06-26",
+    "maturity_date": "2026-06-30",
+    "closing_date": null,
+    "calendar": "exchange",
+    "unit_policy": "auto_prev_unit_net_value",
+    "auto_overwrite": false,
+    "label": "paper",
+    "fee_settings": {},
+    "valuation_settings": {
+      "etf": null,
+      "fut_opt": null,
+      "acc_net_value": "acc_unit_dividend"
+    },
+    "accounts": [
+      {
+        "name": "教学交易账户",
+        "broker": "ricequant",
+        "is_custodian": false
+      }
+    ]
+  },
+  "instruction": {
+    "source": "人工测试指令，不是服务端证据",
+    "trade": "<T1>",
+    "target": {
+      "quantity": 120,
+      "price": 11
+    },
+    "other_changes_authorized": false
+  },
+  "before": {
+    "trades": [
+      {
+        "_id": "<T2>",
+        "product_id": "<P>",
+        "datetime": "2026-06-29 10:05:00",
+        "trading_date": "2026-06-29",
+        "transaction_type": "buy",
+        "order_book_id": "600036.XSHG",
+        "asset_class": "stock",
+        "source": "open_api",
+        "quantity": 100,
+        "price": 20,
+        "commission": 5,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-T2>",
+        "estimated_delta_cash": -2005
+      },
+      {
+        "_id": "<T1>",
+        "product_id": "<P>",
+        "datetime": "2026-06-29 10:00:00",
+        "trading_date": "2026-06-29",
+        "transaction_type": "buy",
+        "order_book_id": "000001.XSHE",
+        "asset_class": "stock",
+        "source": "open_api",
+        "quantity": 100,
+        "price": 10,
+        "commission": 5,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-T1>",
+        "estimated_delta_cash": -1005
+      },
+      {
+        "_id": "<资金流水>",
+        "product_id": "<P>",
+        "datetime": "2026-06-26 10:00:00",
+        "trading_date": "2026-06-26",
+        "transaction_type": "cash_in",
+        "order_book_id": "CNY",
+        "asset_class": "current_deposit",
+        "source": "open_api",
+        "commission": 0,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-资金>",
+        "settlement_amount": 1000000,
+        "estimated_delta_cash": 1000000
+      }
+    ],
+    "total": 3,
+    "balances": {
+      "2026-06-26": {
+        "date": "2026-06-26",
+        "total_assets": 1000000,
+        "total_liabilities": 0,
+        "total_equity": 1000000,
+        "units": 1000000.0,
+        "unit_net_value": 1.0,
+        "daily_pnl": 0,
+        "daily_returns": 0.0,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 1000000,
+            "fair_value": null,
+            "market_value": 1000000,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0
+          }
+        ]
+      },
+      "2026-06-29": {
+        "date": "2026-06-29",
+        "total_assets": 1001656.0,
+        "total_liabilities": 0,
+        "total_equity": 1001656.0,
+        "units": 1000000.0,
+        "unit_net_value": 1.001656,
+        "daily_pnl": 1656.0,
+        "daily_returns": 0.0017000000000000348,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 996990,
+            "fair_value": null,
+            "market_value": 996990.0,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0.0
+          },
+          {
+            "order_book_id": "000001.XSHE",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 10.24,
+            "market_value": 1024.0,
+            "cost": 1005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 19.0
+          },
+          {
+            "order_book_id": "600036.XSHG",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 36.42,
+            "market_value": 3642.0,
+            "cost": 2005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 1637.0
+          }
+        ]
+      },
+      "2026-06-30": {
+        "date": "2026-06-30",
+        "total_assets": 1001545.0,
+        "total_liabilities": 0,
+        "total_equity": 1001545.0,
+        "units": 1000000.0,
+        "unit_net_value": 1.001545,
+        "daily_pnl": -111.0,
+        "daily_returns": -0.0001996693475604179,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 996990,
+            "fair_value": null,
+            "market_value": 996990.0,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0.0
+          },
+          {
+            "order_book_id": "000001.XSHE",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 10.05,
+            "market_value": 1005.0000000000001,
+            "cost": 1005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": -19.0
+          },
+          {
+            "order_book_id": "600036.XSHG",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 35.5,
+            "market_value": 3550.0,
+            "cost": 2005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": -92.0
+          }
+        ]
+      }
+    }
+  },
+  "update": {
+    "effect_count": 1,
+    "updated": {
+      "_id": "<T1>",
+      "product_id": "<P>",
+      "datetime": "2026-06-29 10:00:00",
+      "trading_date": "2026-06-29",
+      "transaction_type": "buy",
+      "order_book_id": "000001.XSHE",
+      "asset_class": "stock",
+      "source": "open_api",
+      "quantity": 120,
+      "price": 11,
+      "commission": 5,
+      "tax": 0,
+      "other_fees": 0,
+      "currency": "CNY",
+      "exchange_rate": 1,
+      "account": "教学交易账户",
+      "foreign_id": "<外部键-T1>",
+      "estimated_delta_cash": -1325
+    },
+    "server_generated_changes": {
+      "estimated_delta_cash": [
+        -1005,
+        -1325
+      ],
+      "inserted_datetime_changed": true
+    }
+  },
+  "after": {
+    "trades": [
+      {
+        "_id": "<T2>",
+        "product_id": "<P>",
+        "datetime": "2026-06-29 10:05:00",
+        "trading_date": "2026-06-29",
+        "transaction_type": "buy",
+        "order_book_id": "600036.XSHG",
+        "asset_class": "stock",
+        "source": "open_api",
+        "quantity": 100,
+        "price": 20,
+        "commission": 5,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-T2>",
+        "estimated_delta_cash": -2005
+      },
+      {
+        "_id": "<T1>",
+        "product_id": "<P>",
+        "datetime": "2026-06-29 10:00:00",
+        "trading_date": "2026-06-29",
+        "transaction_type": "buy",
+        "order_book_id": "000001.XSHE",
+        "asset_class": "stock",
+        "source": "open_api",
+        "quantity": 120,
+        "price": 11,
+        "commission": 5,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-T1>",
+        "estimated_delta_cash": -1325
+      },
+      {
+        "_id": "<资金流水>",
+        "product_id": "<P>",
+        "datetime": "2026-06-26 10:00:00",
+        "trading_date": "2026-06-26",
+        "transaction_type": "cash_in",
+        "order_book_id": "CNY",
+        "asset_class": "current_deposit",
+        "source": "open_api",
+        "commission": 0,
+        "tax": 0,
+        "other_fees": 0,
+        "currency": "CNY",
+        "exchange_rate": 1,
+        "account": "教学交易账户",
+        "foreign_id": "<外部键-资金>",
+        "settlement_amount": 1000000,
+        "estimated_delta_cash": 1000000
+      }
+    ],
+    "total": 3,
+    "balances": {
+      "2026-06-26": {
+        "date": "2026-06-26",
+        "total_assets": 1000000,
+        "total_liabilities": 0,
+        "total_equity": 1000000,
+        "units": 1000000.0,
+        "unit_net_value": 1.0,
+        "daily_pnl": 0,
+        "daily_returns": 0.0,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 1000000,
+            "fair_value": null,
+            "market_value": 1000000,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0
+          }
+        ]
+      },
+      "2026-06-29": {
+        "date": "2026-06-29",
+        "total_assets": 1001540.8,
+        "total_liabilities": 0,
+        "total_equity": 1001540.8,
+        "units": 1000000.0,
+        "unit_net_value": 1.0015408000000001,
+        "daily_pnl": 1540.8,
+        "daily_returns": 0.0015000000000000568,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 996670,
+            "fair_value": null,
+            "market_value": 996670.0,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0.0
+          },
+          {
+            "order_book_id": "000001.XSHE",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 120,
+            "fair_value": 10.24,
+            "market_value": 1228.8,
+            "cost": 1325,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": -96.2
+          },
+          {
+            "order_book_id": "600036.XSHG",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 36.42,
+            "market_value": 3642.0,
+            "cost": 2005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 1637.0
+          }
+        ]
+      },
+      "2026-06-30": {
+        "date": "2026-06-30",
+        "total_assets": 1001426.0,
+        "total_liabilities": 0,
+        "total_equity": 1001426.0,
+        "units": 1000000.0,
+        "unit_net_value": 1.001426,
+        "daily_pnl": -114.8,
+        "daily_returns": -9.984615704121986e-05,
+        "positions": [
+          {
+            "order_book_id": "CNY",
+            "asset_class": "current_deposit",
+            "direction": "long",
+            "quantity": 996670,
+            "fair_value": null,
+            "market_value": 996670.0,
+            "cost": 0,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": 0.0
+          },
+          {
+            "order_book_id": "000001.XSHE",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 120,
+            "fair_value": 10.05,
+            "market_value": 1206.0,
+            "cost": 1325,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": -22.799999999999997
+          },
+          {
+            "order_book_id": "600036.XSHG",
+            "asset_class": "stock",
+            "direction": "long",
+            "quantity": 100,
+            "fair_value": 35.5,
+            "market_value": 3550.0,
+            "cost": 2005,
+            "currency": "CNY",
+            "exchange_rate": 1,
+            "daily_pnl": -92.0
+          }
+        ]
+      }
+    }
+  },
+  "non_target_derived_changes": [
+    {
+      "date": "2026-06-29",
+      "order_book_id": "600036.XSHG",
+      "previous_equity": {
+        "before": 1000000,
+        "after": 1000000
+      },
+      "before": {
+        "weight": 0.003635978819075611,
+        "contribute_returns": 0.00168049516908216,
+        "daily_pnl": 1637.0
+      },
+      "after": {
+        "weight": 0.0036363970394416283,
+        "contribute_returns": 0.0015936526479751385,
+        "daily_pnl": 1637.0
+      }
+    },
+    {
+      "date": "2026-06-30",
+      "order_book_id": "600036.XSHG",
+      "previous_equity": {
+        "before": 1001656.0,
+        "after": 1001540.8
+      },
+      "before": {
+        "weight": 0.003544523710866711,
+        "contribute_returns": -0.00016549171149151754,
+        "daily_pnl": -92.0
+      },
+      "after": {
+        "weight": 0.0035449449085603927,
+        "contribute_returns": -8.001608404000198e-05,
+        "daily_pnl": -92.0
+      }
+    }
+  ],
+  "offline_comparisons": {
+    "origin": "对原始完整 SDK 读回对象作离线比较，不是服务端返回字段；不公开被删除字段的值。",
+    "objects": {
+      "T1_get": {
+        "key_sets_equal": true,
+        "compared_field_count": 29,
+        "changed_keys": [
+          "estimated_delta_cash",
+          "inserted_datetime",
+          "price",
+          "quantity"
+        ]
+      },
+      "T2_get": {
+        "key_sets_equal": true,
+        "compared_field_count": 29,
+        "changed_keys": []
+      },
+      "product_get": {
+        "key_sets_equal": true,
+        "compared_field_count": 34,
+        "changed_keys": []
+      }
+    }
+  },
+  "compute_observations": [
+    {
+      "stage": "funding:state:1",
+      "response": {
+        "state": "computing",
+        "execution_id": 1
+      }
+    },
+    {
+      "stage": "funding:state:2",
+      "response": {
+        "state": "normal",
+        "execution_id": 2
+      }
+    },
+    {
+      "stage": "before:state:1",
+      "response": {
+        "state": "computing",
+        "execution_id": 3
+      }
+    },
+    {
+      "stage": "before:state:2",
+      "response": {
+        "state": "computing",
+        "execution_id": 3
+      }
+    },
+    {
+      "stage": "before:state:3",
+      "response": {
+        "state": "normal",
+        "execution_id": 3
+      }
+    },
+    {
+      "stage": "after:state:1",
+      "response": {
+        "state": "computing",
+        "execution_id": 4
+      }
+    },
+    {
+      "stage": "after:state:2",
+      "response": {
+        "state": "computing",
+        "execution_id": 4
+      }
+    },
+    {
+      "stage": "after:state:3",
+      "response": {
+        "state": "normal",
+        "execution_id": 4
+      }
+    }
+  ]
+}

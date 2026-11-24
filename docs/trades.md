@@ -175,26 +175,26 @@
 
 ## 相关学习案例
 
-[流水导入与历史更正](demo/historical-trade-correction/README.md)展示如何区分漏导、重复和错误记录，并读回受影响估值；从差异进入时先看[对账案例](demo/reconciliation-controls/README.md)。
+[流水场景](demo/trades/README.md)按操作类型和流水来源导航；[OpenAPI 流水修改](demo/trades/correction/openapi/README.md)展示如何定位错误记录、仅修改获准字段，并读回受影响估值；从差异进入时先看[对账案例](demo/reconciliation-controls/README.md)。
 
 导入、修改和删除改变估值输入，不能据写入成功直接宣称净值已更新。完成流水核对后，再检查产品计算状态和受影响日期的头寸报表。
 
 
 ## API 使用约定
 
-Python 与 CLI 完成相同业务操作，连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例资源、账户、ID 与路径；写入和删除须有授权。JSON 按[流水字段](fields/trades.md)准备，文件使用相应账户通道模板；省略可选筛选会扩大范围，不代表安全默认。
+Python 与 CLI 完成相同业务操作。连接、任务等待及部分失败处理见[连接说明](connection.md)。替换示例资源、账户、ID 与路径；写入和删除须有授权。JSON 按[流水字段](fields/trades.md)准备，文件使用相应账户通道模板；省略可选筛选会扩大范围，不代表安全默认。
 记录标识：`trades.list` 的 `trades[]` 中记录主键可为 `_id`，结构化写入逐项结果的记录 ID 为 `id`。调用 get/update/delete 时使用对应响应里的记录 ID 作为 trade_id/ID 数组，不要把 foreign_id 当作主键，也不要假设 list 记录必有 `id`。
 
 ## list
-查询产品或产品组流水；聚合查询会等到服务端算完。
+默认查询产品或产品组当前有效流水；显式设置 `is_query_assistant=True` 查询副表。聚合查询会等到服务端算完。
 
 Python 签名：`rqamsh.trades.list(resource: str, start_date: str, end_date: str, *, sources: list[str] | None=None, order_book_id: str | None=None, symbol: str | None=None, asset_transaction_types: list[str] | None=None, account_names: list[str] | None=None, asset_unit_ids: list[str] | None=None, key_words: list[str] | None=None, group_by: str | None=None, remarks: str | None=None, is_query_assistant: bool=False, offset: int | None=None, limit: int | None=None, sort_key: str | None=None, start_inserted_date: str | None=None, end_inserted_date: str | None=None, algo_names: list[str] | None=None, algo_types: list[str] | None=None, algo_time_span: list[str] | None=None)`。
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
-|`start_date`|`str`|必填|流水起始日期 YYYY-MM-DD，包含当日。|
-|`end_date`|`str`|必填|流水截止日期 YYYY-MM-DD，包含当日。|
+|`start_date`|`str`|必填|按成交时间 `datetime` 筛选的起始自然日 YYYY-MM-DD，包含当日；不是 `trading_date` 交易日筛选。|
+|`end_date`|`str`|必填|按成交时间 `datetime` 筛选的截止自然日 YYYY-MM-DD，包含当日。|
 |`sources`|`list[str] \| None`|`None`|流水来源枚举数组（取值见[流水来源](fields/trades.md#tradesource)），如 open_api、settlement_upload。|
 |`order_book_id`|`str \| None`|`None`|资产代码筛选。|
 |`symbol`|`str \| None`|`None`|资产名称筛选。|
@@ -204,7 +204,7 @@ Python 签名：`rqamsh.trades.list(resource: str, start_date: str, end_date: st
 |`key_words`|`list[str] \| None`|`None`|服务端关键词数组。|
 |`group_by`|`str \| None`|`None`|asset 或 trading_date；省略不聚合。|
 |`remarks`|`str \| None`|`None`|备注筛选。|
-|`is_query_assistant`|`bool`|`False`|是否查询副表，默认 false。|
+|`is_query_assistant`|`bool`|`False`|`True` 查询副表；副表不是当前有效流水。|
 |`offset`|`int \| None`|`None`|分页偏移。|
 |`limit`|`int \| None`|`None`|单页数量。|
 |`sort_key`|`str \| None`|`None`|“字段,1”升序或“字段,-1”降序。|
@@ -221,7 +221,7 @@ Python 签名：`rqamsh.trades.list(resource: str, start_date: str, end_date: st
 |`trades`|流水列表|array（object 元素）|—|本次查询返回的记录；元素为一条[流水记录](fields/trades.md#trade)，记录主键为 `_id`，不能假设自动改名为 `id`，也不要用 `foreign_id` 代替|恒返回；`offset` / `limit` 只缩小本数组，`group_by` 非空时元素是按聚合键合并后的结果，不是逐笔流水|
 |`total`|匹配总条数|integer|条|该查询命中的总条数，不受 `offset` / `limit` 影响|恒返回；`group_by` 非空时为聚合后的条数；对照它和分页参数确认是否取得完整需求范围|
 
-结果检查：对照 total 和分页参数确认是否取得完整需求范围；group_by 返回聚合而非逐笔明细。主表和副表由 is_query_assistant 区分，查询结算替换前流水时应明确需要哪一类数据。
+结果检查：对照 `total` 和分页参数确认是否取得完整需求范围；`group_by` 返回聚合而非逐笔明细。当前结果不能证明文件导入前有哪些流水；要追查批次或核对替换前后的差异，使用原始文件、[导入凭证](confirmations.md)和导入前的本地导出。
 
 ```python
 result = rqamsh.trades.list(resource='授权测试产品', start_date='2026-01-01', end_date='2026-01-31')
@@ -267,7 +267,16 @@ rqamsh trades get --resource "授权测试产品" --trade-id "0123456789abcdef01
 
 price/quantity/settlement_amount 的必要性依交易类型（见[写入校验](trades.md#transaction-type-write-rules)），不能把示例用于所有品种。**`price` 填实际成交价（不复权）**：持仓市值与净值按不复权行情计算，若用前复权/后复权价导入，买入金额与估值价格就不同口径，会凭空造出收益或亏损。输入缺 source 时补 open_api；已有 source 不覆盖。允许 manual/open_api/paper_trading/client_upload（见[流水来源](fields/trades.md#tradesource)）；日内和结算来源必须走文件流程。trade 和混合数据源可写，纯估值表产品拒绝（服务端文案：该产品不能导入交易流水）。上传前使用 products.get 确认账户已配置，每项 account 应与产品账户对应。
 
-结构化上传不按日期清空，也不是文件覆盖：按同产品非空 foreign_id 更新或新增，空/空白外部 ID 不保证重复导入幂等；历史修改从旧/新日期最早日起重算。
+结构化上传不按日期清空，也不是文件覆盖；未提交的旧记录保持不变。成功项按同产品非空 `foreign_id` 更新或新增，账户不单独划分外部键空间。重发的预期效果如下：
+
+|成功提交的输入|流水登记效果|估值处理|
+|---|---|---|
+|相同非空外部键、相同完整业务内容|更新原记录，保留记录 ID；不新增重复成交，不重复计入资金或持仓|仍按写入处理并自动提交计算，不因内容相同而跳过；历史输入从本批最早受影响日向后重算|
+|相同非空外部键、业务内容有修订|用本次完整业务内容更新原记录，不是局部字段补丁；保留记录 ID|从旧、新交易日中最早受影响日向后重算|
+|新的非空外部键|新增一条记录；不要给同一笔成交换键重发|自动提交受影响日期的计算|
+|缺少、空或纯空白外部键|按新记录插入，不做外部键匹配；重复提交会重复记账|新增记录会进入后续估值，不能用于安全重试|
+
+因此，稳定外部键保证的是同一业务记录不重复新增，不表示整个请求是无操作：重新提交仍更新录入时间并触发计算。相同输入及行情、配置、其他业务数据不变时，重算后的业务结果应一致；若结果不一致，应排查依赖变化或缺陷，不能用“重发效果不保证”代替诊断。历史起算日、封账与结果就绪遵守[输入变更与重算](index.md#valuation-recompute)。上述规则不覆盖校验拒绝或部分失败项，仍须逐项检查回执。
 
 Python 签名：`rqamsh.trades.upload(resource: str, data: list[dict[str, Any]], *, prefer_fill_fund_exchange_suffix: bool=True)`。
 
@@ -301,9 +310,11 @@ rqamsh trades upload --resource "授权测试产品" --input @trades.json
 <a id="upload-intraday-file"></a>
 
 ## upload_intraday_file
-上传一个日内流水文件；按成功解析日期、产品、账户及可选资产单元，删除当前有效 intraday_upload/open_api 后插入合法行，同日已有结算流水时拒绝该日日内行。
+上传一个日内流水文件；按成功解析的 `trading_date`、产品、账户及资产单元，以合法行替换该范围内当前有效的 `intraday_upload`、`open_api` 流水。是否已有结算按产品、账户和交易日判断，不按资产单元隔离：同账户同日任一单元已有结算，其他单元的日内行也会被拒。
 
-省略 asset_unit_id **不保证仅影响无资产单元的记录**；需要限定单元时应显式提供。请先限定账户、核对目标日期并导出留存。文件模板取决于券商通道，不能把任意 CSV 列名视为受支持模板。报价币种、夜盘日期、基金后缀按相应文件规则解析；prefer_fill_fund_exchange_suffix=True 启用基金场内后缀自动补全，False 不使用该兼容补全方式；结算文件同理。上传后核对解析后的代码、币种和交易日。
+导入任务正常完成但含逐行错误时，有合法行的交易日仍执行范围替换，只登记该日合法行；被拒行不会替你保留对应旧成交。没有合法行的交易日不替换。客户端抛出的部分失败异常不会撤销已完成的替换；任务中断或无回执则按结果未知只读查证，不能假定整批未写入。
+
+替换旧有效流水时，显式 `asset_unit_id` 仅匹配该单元；省略时仅匹配未绑定资产单元的记录，不表示替换账户全部单元。上传前先按账户检查结算，再按目标单元确认替换范围。保存原始文件并本地留存将被替换的有效流水；查询和下载按 `datetime` 自然日筛选，夜盘应覆盖该交易日可能的全部成交自然日，再核对 `trading_date`，不能只查询同名日期。文件模板取决于券商通道，不能把任意 CSV 列名视为受支持模板。报价币种、夜盘日期、基金后缀按相应文件规则解析；prefer_fill_fund_exchange_suffix=True 启用基金场内后缀自动补全，False 不使用该兼容补全方式；结算文件同理。上传后核对解析后的代码、币种和交易日。
 
 Python 签名：`rqamsh.trades.upload_intraday_file(resource: str, file_path: str, account: str, *, asset_unit_id: str | None=None, prefer_fill_fund_exchange_suffix: bool=True)`。
 
@@ -323,7 +334,7 @@ Python 签名：`rqamsh.trades.upload_intraday_file(resource: str, file_path: st
 |`err_msg`|逐行错误|array（object 元素）|—|每个解析失败或被拒的行一项，元素含 `line_num`(integer，文件行号)与 `msg`(string，原因，如「不能在已上传过日终结算流水的日期上传日内流水」)|恒返回；无错误时为空数组，非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
 |`confirmation_id`|导入凭证 ID|string / null|字符串 ID|本次导入生成的凭证记录 ID|由数据决定；没有任何合法行与错误行时为 `null`|
 
-操作检查：合法项可写入而其他项失败，异常中保留逐项结果，重试前先核对已成功项；导入后按日期、账户与来源重新查询当前有效流水，需要留存的被覆盖记录另查副表。
+操作检查：合法项可写入而其他项失败，部分失败不会回滚整批，异常中保留逐项结果。保存回执；有 `confirmation_id` 时可查[导入凭证](confirmations.md#get)。按原范围及来源重新查询当前有效流水，与原始文件、导入结果和本地导出核对后，再判断是否以及如何重试。
 
 ```python
 result = rqamsh.trades.upload_intraday_file(resource="授权测试产品", file_path="intraday.xlsx", account="授权测试账户")
@@ -369,7 +380,7 @@ rqamsh trades update --resource "授权测试产品" --trade-id "0123456789abcde
 ```
 
 ## delete
-删除产品流水：默认按日期与筛选条件删除，也可用 trade_ids 指定记录；两种方式互斥。
+删除产品流水：默认按日期与筛选条件删除主表，显式设置 `is_query_assistant=True` 时改为删除副表。用 `trade_ids` 指定记录时只支持主表，与按日期筛选互斥。
 
 按日期方式即使 HTTP 方法为 GET，也会执行不可撤销的删除；省略全部筛选会删除整个允许日期范围，受封账限制。按 ID 方式同步返回，封账范围同样由服务端限制。
 
@@ -389,21 +400,22 @@ Python 签名：`rqamsh.trades.delete(resource: str, *, trade_ids: list[str] | N
 |`asset_unit_ids`|`list[str] \| None`|`None`|资产单元 ID 数组。|
 |`key_words`|`list[str] \| None`|`None`|关键词数组。|
 |`remarks`|`str \| None`|`None`|备注筛选。|
-|`is_query_assistant`|`bool`|`False`|是否删除副表流水，默认 false。|
+|`is_query_assistant`|`bool`|`False`|仅用于按日期删除；`True` 删除副表，不得与 `trade_ids` 同用。|
 |`algo_names`|`list[str] \| None`|`None`|算法名称数组。|
 |`algo_types`|`list[str] \| None`|`None`|算法类型数组。|
 |`algo_time_span`|`list[str] \| None`|`None`|算法时间段数组。|
 
-返回：按 ID 方式同步返回 `effect_count`；按日期方式原样透传服务端任务终态 JSON，删除数量字段名与位置以实际响应为准（不保证是 `data.deleted_count`）。两种方式都可能触发重算。
+返回：按 ID 方式同步返回 `effect_count`；按日期方式返回任务终态 `{"status":"SUCCESS","progress":1,"data":{"deleted_count":删除条数}}`，客户端保留包装、不拆 `data`。按 ID 方式只有匹配到可删记录且能确定最早交易日时才提交重算，从该交易日起算；未匹配到时返回 `effect_count=0`，不提交计算。按日期方式的删除任务即使实际删除数为 `0`，仍会从封账限制调整后的查询起始自然日提交计算。两者均不等待估值完成。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际删除条数|integer|条|按 `trade_ids` 实际删除的流水条数|由参数选择（传入 `trade_ids` 时）；ID 不存在、不属于本产品或落在封账范围内都为 `0`，`0` 不代表删除范围已清空；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际删除条数|integer|条|按 `trade_ids` 实际删除的流水条数|由参数选择（传入 `trade_ids` 时）；不存在、不属于本产品或落在封账范围内的记录不计入，`0` 不代表删除范围已清空；见[写入结果](connection.md#write-result)|
 |`status`|任务状态|string（枚举）|—|按日期删除的任务终态，`SUCCESS` 表示删除任务完成|由参数选择（按日期与筛选条件时）；失败终态由客户端抛 `task_failed`，不会当作成功返回；见[任务终态 JSON](connection.md#task-result)|
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例|由参数选择（按日期时）；成功终态为 `1`|
-|`data`|任务结果|object / array / null|—|按日期删除的任务产物，结构随接口，不自动拆包|由参数选择（按日期时）；`0` 表示没有命中可删除的流水，范围被封账限制收窄后也可能为 `0`；删除数量字段以实际响应为准|
+|`data`|任务结果|object|—|按日期删除的结果对象，包含 `deleted_count`|由参数选择（按日期时）；成功终态返回，不自动拆包|
+|`data.deleted_count`|实际删除条数|integer|条|按日期与筛选条件实际删除的流水条数|按日期删除成功时返回；`0` 表示没有命中可删除记录，包含封账限制收窄后无命中的情况，不表示没有提交计算|
 
-操作检查：按日期删除前先用 list 以相同条件预览并留存，确认 is_query_assistant 的主/副表选择；按 ID 删除前核对每个 ID 的产品归属和删除授权，保留所需明细。返回后重新查询同一范围或记录；封账限制、零影响数量和任务超时都不代表删除范围已清空，受影响日期的估值需另行核对。
+操作检查：先确认产品属于目标工作空间、拟删除范围已获授权，再核对封账边界。按日期删除前用 `list` 以相同日期和筛选条件预览完整明细；按 ID 删除前用 `get` 逐一核对产品归属并确认每条记录都在授权范围内。删除前将所需明细保存到本地。返回后核对实际删除条数，并重新查询同一范围或记录；封账限制、零删除和任务超时都不代表范围已清空。受影响日期的估值需另行核对。
 
 按日期与筛选条件删除（默认方式，未给出的筛选不参与限制）：
 
@@ -430,7 +442,9 @@ rqamsh trades delete --resource "授权测试产品" --trade-ids '["0123456789ab
 ## upload_settlement_file
 上传一个日终结算流水文件并等待导入任务完成。
 
-按合法行日期、产品、账户和可选资产单元，将当前日内/open_api 记录转入副表，删除当前 settlement_upload/intraday_upload/open_api 后插入结算行；还可能创建解析出的自定义标的。省略 asset_unit_id 不保证仅影响无单元记录，先按范围导出留存。结果可能含 SUCCESS/data；合法行可成功并附错误，不保证全文件回滚。文件模板及代码后缀处理同 [upload_intraday_file](#upload-intraday-file)，上传后核对实际日期、币种和代码。
+按合法结算行的 `trading_date`、产品、账户及资产单元，以结算行替换该范围内当前有效的 `settlement_upload`、`intraday_upload`、`open_api` 流水；解析出尚未登记的自定义标的时一并创建。替换旧有效流水时，显式 `asset_unit_id` 仅匹配该单元，省略时仅匹配未绑定单元记录，不表示整账户替换；同账户任一单元的结算记录仍会阻止该交易日的后续日内上传。
+
+导入任务正常完成但含逐行错误时，有合法结算行的交易日仍执行范围替换，只登记该日合法行；没有合法行的交易日不替换。客户端抛出的部分失败异常不撤销已完成替换，不能只补传失败行；任务中断或无回执则先只读查证。留存与核验夜盘输入时，查询/下载须覆盖可能的全部成交自然日，再核对 `trading_date`。文件模板及代码后缀处理同 [upload_intraday_file](#upload-intraday-file)，上传后核对实际日期、币种和代码。
 
 Python 签名：`rqamsh.trades.upload_settlement_file(resource: str, file_path: str, account: str, *, asset_unit_id: str | None=None, prefer_fill_fund_exchange_suffix: bool=True)`。
 
@@ -450,7 +464,7 @@ Python 签名：`rqamsh.trades.upload_settlement_file(resource: str, file_path: 
 |`progress`|任务进度|number|0 到 1|服务端上报的进度比例|恒返回；成功终态为 `1`|
 |`data`|导入结果|object|—|导入摘要，含 `effect_count`(integer，条)、`err_msg`(array，元素含 `line_num`(integer，文件行号)与 `msg`(string))、`confirmation_id`(string 或空)|恒返回；不自动拆包；`err_msg` 非空即抛部分失败异常，见[逐项失败容器](connection.md#item-errors)|
 
-操作检查：上传前保存被替换日期的原流水，核对账户和可选资产单元。任务终态仍需检查错误；合法行可能已写入且旧日内数据已转入副表。分别查询当前有效流水和需要留存的副表记录，再检查估值；失败不保证回滚。
+操作检查：上传前确认产品、日期、账户及资产单元均在覆盖授权内，保留原始文件并将可能被替换的当前有效流水导出到本地。任务结束后仍需检查逐行错误和实际写入条数，保存回执；有 `confirmation_id` 时可查[导入凭证](confirmations.md#get)。按原范围及来源重新查询当前有效流水，对照原始文件、导入结果和本地导出确认实际替换范围，再核对受影响日期的估值。
 
 ```python
 result = rqamsh.trades.upload_settlement_file(resource='授权测试产品', file_path='settlement.xlsx', account='授权测试账户')
@@ -461,7 +475,7 @@ rqamsh trades upload-settlement-file --resource "授权测试产品" --file-path
 ```
 
 ## download
-生成并下载产品或产品组流水 Excel，等待任务后写入指定文件。
+生成并下载产品或产品组流水的 Excel，等待任务后写入指定文件。默认导出当前有效流水，`is_query_assistant=True` 时导出副表。
 
 Python 签名：`rqamsh.trades.download(resource: str, start_date: str, end_date: str, output: str, *, sources: list[str] | None=None, order_book_id: str | None=None, symbol: str | None=None, asset_transaction_types: list[str] | None=None, account_names: list[str] | None=None, asset_unit_ids: list[str] | None=None, key_words: list[str] | None=None, group_by: str | None=None, remarks: str | None=None, is_query_assistant: bool=False, offset: int | None=None, limit: int | None=None, sort_key: str | None=None, start_inserted_date: str | None=None, end_inserted_date: str | None=None, algo_names: list[str] | None=None, algo_types: list[str] | None=None, algo_time_span: list[str] | None=None)`。
 
@@ -480,7 +494,7 @@ Python 签名：`rqamsh.trades.download(resource: str, start_date: str, end_date
 |`key_words`|`list[str] \| None`|`None`|关键词数组。|
 |`group_by`|`str \| None`|`None`|asset 或 trading_date；省略不聚合。|
 |`remarks`|`str \| None`|`None`|备注筛选。|
-|`is_query_assistant`|`bool`|`False`|是否查询副表，默认 false。|
+|`is_query_assistant`|`bool`|`False`|`True` 导出副表；备份前确认与拟操作范围一致。|
 |`offset`|`int \| None`|`None`|导出起始偏移；完整导出时不要沿用列表分页偏移，下载后核对实际范围。|
 |`limit`|`int \| None`|`None`|导出数量限制；完整导出时不要沿用单页数量，下载后核对记录覆盖。|
 |`sort_key`|`str \| None`|`None`|“字段,1”升序或“字段,-1”降序。|

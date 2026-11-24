@@ -223,7 +223,7 @@ def close_enough(left: object, right: object, tolerance: str = "0.000000001") ->
 
 def values_equal(left: object, right: object) -> bool:
     """比较两个记录字段：数值用十进制容差，其余按原值严格比较。"""
-    numeric = (int, float) 
+    numeric = (int, float)
     left_numeric = isinstance(left, numeric) and not isinstance(left, bool)
     right_numeric = isinstance(right, numeric) and not isinstance(right, bool)
     if left_numeric and right_numeric:
