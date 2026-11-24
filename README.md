@@ -2,16 +2,19 @@
 
 `rqams-harness` 是 Agent 操作 AMS 的 Python API 与 CLI：发行包名 `rqams-harness`，导入名和命令名均为 `rqamsh`。它读取 AMS 业务数据并执行受控写入；估值与业务数据由 AMS 管理，报告加工与第三方系统对接由调用方完成。[业务指南与场景](#文档入口)随 SDK 安装。
 
-## 安装
+## 安装 SDK 与 CLI
 
-要求 Python >= 3.10。在本项目目录或按发布渠道安装：
+要求 Python >= 3.10。在 Agent 或调用方实际使用的 Python 环境中，先从已配置的包索引安装：
 
 ```console
-python -m pip install -e .
-# 或安装发布包：python -m pip install rqams-harness
+python -m pip install rqams-harness
+```
 
-rqamsh --help
-rqamsh docs
+没有可用索引，或索引版本未提供 `docs` 命令时，从本仓库选择包含该命令的修订，在仓库根目录运行 `python -m pip install .`（开发时可用 `python -m pip install -e .`）。装好后，切到实际使用的工作区（不要留在 SDK 源码目录），用同一个 Python 自检：
+
+```console
+python -m rqamsh --help
+python -m rqamsh docs
 ```
 
 `docs`、`schema` 和 `--help` 离线可用。`rqamsh docs` 返回当前 SDK 的文档目录 `path`、`sdk_version` 和 `docs_sha256`；查某个操作优先用 `rqamsh <块> <操作> --help`，需要完整签名才用 `rqamsh schema`。终端找不到 `rqamsh` 时，先激活安装该包的 Python 环境，或改用 `python -m rqamsh`。
@@ -47,11 +50,15 @@ rqamsh --token @token.txt products list
 - wheel 和 sdist 都包含公开文档、学习案例及其附件，原稿只在仓库 `docs/` 维护。使用安装版本时从 `rqamsh docs` 返回的目录读文档，无须每次任务拉取仓库。
 - 在线 `dev` 用于浏览开发中内容，不替代已安装 SDK 随附的文档；版本级变化见 [CHANGELOG.md](https://github.com/ricequant/rqams-harness/blob/dev/CHANGELOG.md)。
 
-## Agent Skill
+<a id="agent-skill"></a>
 
-技能族位于 [ricequant-skills](https://github.com/ricequant/ricequant-skills) 的 `skills/basic/rqams` 下。安装或更新 SDK 后，由 Skill 安装流程运行 `rqamsh docs --skill-dir <rqamsh 子技能目录>`，文档写入该目录的 `sdk-docs/<docs_sha256>/`，不改动 `SKILL.md` 或覆盖其他修订。普通 `pip install` 只安装 Python 环境中的文档，不写用户的 Agent 目录；不需要复制时可直接读 `rqamsh docs` 返回的随包路径。
+## 安装 Agent Skill
 
-按当前目标阅读学习案例与共用判断；接入、目标拆解、任务完成条件和写入计划按需使用，不把新会话当作重走固定流程的理由。缺项或运行态进入等待诊断，写入前核对授权及目标操作规则。Skill 中的必读触发条件不替代这些业务权威页。
+1. 先[安装并自检 SDK](#安装-sdk-与-cli)。只用 CLI 或 Python API 时，到这一步即可。
+2. 从本仓库源码或解压的源码发行包（`.tar.gz`）取出完整的 `skills/rqamsh/` 目录；没有源码时可从 [GitHub 获取 Skill](https://github.com/ricequant/rqams-harness/tree/dev/skills/rqamsh)。按宿主的 Skill 安装方式添加该目录；手工安装时保持 `rqamsh/SKILL.md` 结构。以 OMP 为例，把 `rqamsh/` 复制到**使用 AMS 的工作区**的 `.omp/skills/` 下，形成 `.omp/skills/rqamsh/SKILL.md`。如果已装过旧版同名 Skill，按宿主的方式移除或停用旧版，避免同时加载两份。无需安装 `ricequant-skills`。
+3. 在该工作区启动新会话，让 Agent 使用 `rqamsh`，例如「用 rqamsh 说明实时快照和历史估值的区别，不连接 AMS」。Agent 应从 `python -m rqamsh docs` 返回的 `path` 读取当前 SDK 的业务文档。需要查询实际数据时，再按[认证与连接](#认证与连接)操作。
+
+普通 `pip install` 不安装 Skill，也不写 Agent 目录。只有宿主无法读取 Python 环境中的随包文档时，才运行 `python -m rqamsh docs --skill-dir "<已安装的 rqamsh Skill 目录>"`；该路径必须含 `SKILL.md`。文档同步到其 `sdk-docs/<docs_sha256>/`，不会覆盖 Skill 正文或其他文档修订。更新 Skill 时重新安装本仓库的 `skills/rqamsh/`；更新 SDK 后重跑 `docs`，仅使用同步目录的宿主需要再同步一次。
 
 ## 文档入口
 
