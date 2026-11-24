@@ -55,11 +55,9 @@ class Confirmations(_Resource):
                 CustodianEvents、PositionsStatement、PositionsSheet 之一。
         Returns:
             服务端原始数组，每项含 product_id、product_name 与来源对应的账户级或托管级状态；
-            只保留当前身份在目录中可见的产品。
+            可见性由服务端按当前身份过滤。
         """
-        rows = self._client.call("GET", "confirmations", params={"source": source, "filter": "latest"})
-        visible = {ref.id for ref in self._client.resource_catalog() if ref.type == "product"}
-        return [row for row in rows if row.get("product_id") in visible]
+        return self._client.call("GET", "confirmations", params={"source": source, "filter": "latest"})
 
     def download(self, resource: str, confirmation_id: str, output: str) -> Any:
         """下载一份导入凭证的源文件。

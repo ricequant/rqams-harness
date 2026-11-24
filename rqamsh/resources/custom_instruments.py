@@ -9,12 +9,13 @@ from ._base import _Resource, _nonempty, _segment
 
 
 class CustomInstruments(_Resource):
-    """自定义标的与公允价格；读写先核验空间与归属产品，无归属历史标的的可写性由服务端判定。"""
+    """自定义标的与公允价格；写入前核对空间记录与原归属产品的可读性。"""
 
     def _own(self, instrument_ids: list[str], *, write: bool = False) -> list[str]:
-        """从当前空间实际记录中匹配全部 ID 并检查归属，未全部授权时不写入。
+        """从当前空间实际记录中匹配全部 ID，缺任意一条都不写入。
 
-        无归属产品的历史标的没有客户端归属校验，能否修改由服务端判定。
+        这是删除和覆盖写的归属护栏：只允许提交已确认属于当前空间的记录 ID，
+        避免先删除合法子集再失败。写入前读取各原归属产品，不能把原产品可读当作可写。
         """
         requested = {_segment(identifier) for identifier in instrument_ids}
         response = self._client.call("GET", "customized_instruments")
@@ -26,9 +27,10 @@ class CustomInstruments(_Resource):
         }
         if set(matched) != requested:
             raise HarnessError("resource_not_found", "自定义标的不存在或不可访问", status=404)
-        for item in matched.values():
-            if item.get("product_id") and write:
-                self._client.resolve(str(item["product_id"]), {"product"})
+        if write:
+            parents = dict.fromkeys(item["product_id"] for item in matched.values() if item.get("product_id"))
+            for parent in parents:
+                self._client.call("GET", f"products/{_segment(str(parent))}")
         return list(matched)
 
     def list(
@@ -44,12 +46,12 @@ class CustomInstruments(_Resource):
             offset: 分页起始偏移。
             limit: 单页数量。
         Returns:
-            仅含可访问标的的 customized_instruments；total 为权限过滤后、分页前数量。
+            当前空间可访问标的的 customized_instruments；total 为过滤后、分页前数量。
         """
         if (offset is not None and offset < 0) or (limit is not None and limit < 0):
             raise HarnessError("invalid_argument", "offset 和 limit 不能为负数")
         product_id = self._client.resolve(resource, {"product"}).id if resource is not None else None
-        permitted = {ref.id for ref in self._client.resource_catalog() if ref.type == "product"}
+        permitted = {str(row.get("id", row.get("_id"))) for row in self._client.products.list(fields=["id"])["products"]}
         result = self._client.call("GET", "customized_instruments", params={
             "product_id": product_id, "asset_class": asset_class, "q": q,
         })

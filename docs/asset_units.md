@@ -47,11 +47,11 @@ Python 签名：`rqamsh.asset_units.list(resource: str | None=None)`。
 |---|---|---|---|
 |`resource`|`str \| None`|`None`|可选归属产品唯一 ID 或名称；省略列出当前工作空间可访问资产单元。|
 
-返回：资产单元数组。
+返回：资产单元数组，由批量集合端点组装，不逐项读取单元或产品详情。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|资产单元|array（object 元素）|—|当前工作空间可访问的资产单元，元素键为 `id`、`product_id`、`asset_class`、`order_book_id`、`symbol`、`start_date`、`bound_position`，键名与[资产单元配置](fields/asset_units.md#assetunit)一致|恒返回；无可见单元时为空数组；省略 `resource` 时可能含多个产品的单元|
+|`[]`|资产单元|array（object 元素）|—|当前工作空间可访问的资产单元，元素键为 `id`、`product_id`、`asset_class`、`order_book_id`、`symbol`、`start_date`、`bound_position`，键名与[资产单元配置](fields/asset_units.md#assetunit)一致|恒返回；范围由后台按当前身份与空间裁定；无可见单元时为空数组；省略 `resource` 时可能含多个产品的单元|
 
 结果检查：按 product_id 和代码确认归属，再用 id 选择后续目标；省略 resource 时列表可能包含多个产品的单元。空列表不证明其他权限范围内没有单元。
 
@@ -72,7 +72,7 @@ Python 签名：`rqamsh.asset_units.get(resource: str)`。
 |---|---|---|---|
 |`resource`|`str`|必填|资产单元唯一 ID 或名称（symbol），不是归属产品名称。|
 
-返回：目录中的完整资产单元 JSON，根对象就是该单元配置。
+返回：批量集合记录中的完整资产单元 JSON，根对象就是该单元配置。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|

@@ -138,17 +138,17 @@ rqamsh positions-statements download --resource "授权测试资产单元" --pos
 ## latest
 读取工作空间中各产品资产单元的最新持仓单状态，用于快速发现哪些单元长期没有上传或上传已过期。
 
-无参数的工作空间级读取：服务端按产品返回全部资产单元，客户端再按目录过滤，只保留当前身份可见的资产单元；过滤后没有剩余项的产品不会出现在结果中。没有资产单元的产品本来就不在此结果内。
+无参数的工作空间级读取：服务端按产品返回资产单元；范围由后台与网关按当前身份裁定，客户端原样返回，不追加详情核验，也不因详情读取失败丢弃单元；没有资产单元的产品本来就不在此结果内。
 
 Python 签名：`rqamsh.positions_statements.latest()`。
 
-返回：数组，每个元素是一个产品及其可见资产单元的最新上传状态。
+返回：数组，每个元素是一个产品及其资产单元的最新上传状态。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
 |`product_id`|归属产品 ID|string|字符串 ID|归属产品 ID|恒返回；按此字段与产品列表对照|
 |`product_name`|产品名称|string|—|产品名称|恒返回|
-|`positions_statement_items`|资产单元状态列表|array（object 元素）|—|该产品下可见资产单元的最新上传状态|恒返回；不表示数量已核对|
+|`positions_statement_items`|资产单元状态列表|array（object 元素）|—|该产品下资产单元的最新上传状态，范围由后台裁定|恒返回；不表示数量已核对|
 |`positions_statement_items[].asset_unit_name`|资产单元名称|string|—|资产单元显示名称|随父级返回|
 |`positions_statement_items[].asset_unit_id`|资产单元 ID|string|字符串 ID|资产单元记录 ID|随父级返回|
 |`positions_statement_items[].update_time`|最近上传日期|string|YYYY-MM-DD|该单元最近一次上传持仓单的业务日期|随父级返回；从未上传时为字符串「未上传持仓单」，不是发生时刻|

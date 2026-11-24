@@ -42,11 +42,9 @@ class CustodianEvents(_Resource):
         """读取工作空间内各产品的最新托管事件日期。
 
         Returns:
-            产品 ID 到最新日期字符串的映射，只保留当前身份在目录中可见的产品。
+            产品 ID 到最新日期字符串的映射；可见性由服务端按当前身份过滤。
         """
-        latest = self._client.call("GET", "products/custodian_events:get_latest_custodian_event")
-        visible = {ref.id for ref in self._client.resource_catalog() if ref.type == "product"}
-        return {product_id: value for product_id, value in latest.items() if product_id in visible}
+        return self._client.call("GET", "products/custodian_events:get_latest_custodian_event")
 
     def create(self, resource: str, data: dict[str, Any] | list[dict[str, Any]]) -> Any:
         """新增一个或多个托管事件，统一走服务端批量插入。

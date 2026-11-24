@@ -18,20 +18,20 @@ class Products(_Resource):
     ) -> Any:
         """查询当前工作空间中当前用户可访问的产品。
 
+        仅使用响应已有授权明细排除明确拒绝的非所有者记录，不逐项请求详情。
+
         Args:
-            fields: 返回字段列表；省略使用服务端默认字段，始终保留 id 用于可见性过滤。
+            fields: 返回字段列表；省略使用服务端默认字段，始终保留 id 便于调用方定位记录。
             sources: 产品 data_source 枚举列表，不是流水来源。
             member_user_id: 按指定成员获分享的产品筛选，不突破当前用户可见范围。
         Returns:
-            含 products 和 total 的对象，仅保留已核验可访问的产品。
+            产品列表对象；移除明确拒绝的记录时同步调整 total 与 permissions。
         """
-        permitted = {ref.id for ref in self._client.resource_catalog() if ref.type == "product"}
         requested_fields = list(dict.fromkeys([*fields, "id"])) if fields else None
         result = self._client.call("GET", "products", params={
             "fields": requested_fields, "sources": sources, "member_user_id": member_user_id,
         })
-        products = [item for item in result["products"] if str(item.get("id", item.get("_id"))) in permitted]
-        return {**result, "products": products, "total": len(products)}
+        return self._client._filter_resource_listing(result, "products", "product_id")
 
     def get(self, resource: str) -> Any:
         """读取产品完整配置。
@@ -212,11 +212,9 @@ class Products(_Resource):
 
         Returns:
             服务端原始数组，每项含 product_id、product_name、product_full_name、
-            missing_date_count 与 newest_valuation_report_date；只保留当前身份可见的产品。
+            missing_date_count 与 newest_valuation_report_date；可见性由服务端按当前身份过滤。
         """
-        rows = self._client.call("GET", "products:valuation_report_missing_date")
-        visible = {ref.id for ref in self._client.resource_catalog() if ref.type == "product"}
-        return [row for row in rows if str(row.get("product_id")) in visible]
+        return self._client.call("GET", "products:valuation_report_missing_date")
 
     def uploaded_file_hashes(self, product_ids: list[str], file_type: str) -> Any:
         """按产品查询已上传文件的哈希，用于判断本地文件是否已上传。
@@ -231,8 +229,8 @@ class Products(_Resource):
         """
         if file_type not in {"valuation_report", "paper_trading", "trade"}:
             raise HarnessError("invalid_argument", "file_type 必须为 valuation_report、paper_trading 或 trade")
-        # 网关对该路由不校验资源级别，这里只要求产品可见。
-        refs = self._batch_refs(product_ids, {"product"})
+        # 该路由不校验资源级别，不使用可能已过时的可见集合。
+        refs = self._client._resolve_many(product_ids, {"product"}, refresh=True)
         return self._client.call("POST", "products:get_uploaded_files_hash", json={
             "product_ids": [ref.id for ref in refs], "file_type": file_type,
         })
@@ -274,10 +272,13 @@ class ProductGroups(_Resource):
     """产品组自身的配置与重算，不向成员广播写入操作。"""
 
     def list(self) -> Any:
-        """列出当前用户可访问的产品组；返回含 product_groups 的对象。"""
-        return {"product_groups": [
-            dict(ref.data) for ref in self._client.resource_catalog() if ref.type == "product_group"
-        ]}
+        """列出当前用户可访问的产品组。
+
+        Returns:
+            产品组列表对象；移除明确拒绝的记录时同步调整 total 与 permissions。
+        """
+        result = self._client.call("GET", "product_groups")
+        return self._client._filter_resource_listing(result, "product_groups", "group_id")
 
     def get(self, resource: str) -> Any:
         """读取产品组配置。

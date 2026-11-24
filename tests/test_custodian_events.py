@@ -99,10 +99,12 @@ def test_upload_file_surfaces_parse_errors(service, tmp_path):
     assert error.value.details["results"]["confirmation_ids"] == ["c1"]
 
 
-def test_latest_filters_products_outside_catalog(service):
-    """工作空间级最新日期只能返回当前身份可见的产品。"""
+def test_latest_keeps_server_rows_without_catalog_filter(service):
+    """工作空间级最新日期原样返回后台结果，不追加逐产品目录预检。"""
     client, state = service
-    state["catalog"] = catalog_routes([{"id": "p1", "name": "own", "user_id": 1}])
-    # 该接口路径形如 products/{名字}，但属于业务读取：未登记的详情路径按业务请求走按序队列。
-    state["responses"] = [(200, {"p1": "2026-08-31", "p2": "2026-08-30"})]
-    assert client.custodian_events.latest() == {"p1": "2026-08-31"}
+    latest = {"p1": "2026-08-31", "p2": "2026-08-30"}
+    state["responses"] = [(200, latest)]
+    assert client.custodian_events.latest() == latest
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/products/custodian_events:get_latest_custodian_event"),
+    ]

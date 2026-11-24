@@ -40,8 +40,8 @@ def test_download_rejects_unknown_record_before_src_file(service, tmp_path):
     assert all("src_file" not in item[1] for item in state["requests"])
 
 
-def test_latest_filters_items_to_visible_asset_units(service):
-    """工作空间级最新持仓单状态只保留目录可见资产单元，并丢弃空产品。"""
+def test_latest_returns_server_rows_without_asset_unit_preflight(service):
+    """工作空间级最新持仓单状态原样返回，不为可见性追加资产单元目录请求。"""
     client, state = service
     rows = [
         {"product_id": "p1", "product_name": "own", "positions_statement_items": [
@@ -52,11 +52,8 @@ def test_latest_filters_items_to_visible_asset_units(service):
             {"asset_unit_name": "他单元", "asset_unit_id": "u8", "update_time": "2026-01-01"},
         ]},
     ]
-    state["catalog"] = _unit_catalog([{"id": "u1", "symbol": "单元一"}])
     state["responses"] = [(200, rows)]
-    assert client.positions_statements.latest() == [{
-        "product_id": "p1", "product_name": "own", "positions_statement_items": [
-            {"asset_unit_name": "单元一", "asset_unit_id": "u1", "update_time": "2026-08-31"},
-        ],
-    }]
-    assert any(item[1] == "/api/rqams/v2/products/asset_units/positions_statement:get_latest" for item in state["requests"])
+    assert client.positions_statements.latest() == rows
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/products/asset_units/positions_statement:get_latest"),
+    ]

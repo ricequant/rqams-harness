@@ -528,7 +528,7 @@ def test_realtime_factor_exposure_requires_template_and_returns_series(service):
     result = client.analytics.realtime_factor_exposure("own", template="equity/factor")
     assert result["exposure_series"][0]["beta"] == 0.5
     assert result["start"] == "2026-10-08 09:30:00"
-    assert len(state["requests"]) == 5
+    assert sum("/realtime_pa_factor_exposure_series" in item[1] for item in state["requests"]) == 1
     assert _query(state) == "/api/rqams/v2/products/p1/realtime_pa_factor_exposure_series?template=equity%2Ffactor"
 
 
@@ -587,5 +587,5 @@ def test_win_rate_returns_raw_json_without_task(service):
     state["catalog"] = catalog_routes([_OWN_PRODUCT])
     state["responses"] = [(200, payload)]
     assert client.analytics.win_rate("own", start_date="2026-01-01", end_date="2026-09-30") == payload
-    assert len(state["requests"]) == 5
+    assert sum("/win_rate" in item[1] for item in state["requests"]) == 1
     assert _query(state) == "/api/rqams/v2/products/p1/win_rate?start_date=2026-01-01&end_date=2026-09-30"

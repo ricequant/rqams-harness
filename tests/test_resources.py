@@ -13,7 +13,44 @@ def test_instruments_cross_workspace_batch_never_writes(service):
     with pytest.raises(HarnessError) as error:
         client.custom_instruments.delete(["own", "foreign"])
     assert error.value.code == "resource_not_found"
-    assert all(request[0] == "GET" for request in state["requests"])
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/customized_instruments"),
+    ]
+
+
+def test_asset_unit_list_reads_batch_collection_once(service):
+    """列举资产单元只请求一次批量目录，不逐产品核对单条详情。"""
+    client, state = service
+    state["catalog"] = catalog_routes(
+        products=[{"id": "p1", "name": "own", "user_id": 1}],
+        units=[
+            {"product_id": "p1", "asset_units": [{"id": "u1", "symbol": "单元一"}]},
+            {"product_id": "p2", "asset_units": [{"id": "u2", "symbol": "单元二"}]},
+        ],
+    )
+    assert client.asset_units.list() == [{"id": "u1", "symbol": "单元一"}, {"id": "u2", "symbol": "单元二"}]
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/products/asset_units"),
+    ]
+
+
+def test_asset_unit_list_filters_by_resolved_product_id(service):
+    """指定产品时用解析出的 ID 筛选同一批资产单元，不额外建立产品详情目录。"""
+    client, state = service
+    state["catalog"] = catalog_routes(
+        products=[{"id": "p1", "name": "own", "user_id": 1}, {"id": "p2", "name": "shared", "user_id": 2}],
+        units=[
+            {"product_id": "p1", "asset_units": [{"id": "u1", "symbol": "单元一"}]},
+            {"product_id": "p2", "asset_units": [{"id": "u2", "symbol": "单元二"}]},
+        ],
+    )
+    assert client.asset_units.list("own") == [{"id": "u1", "symbol": "单元一"}]
+    paths = [request[1] for request in state["requests"]]
+    assert paths[-1] == "/api/rqams/v2/products/asset_units"
+    assert not any(
+        path.startswith("/api/rqams/v2/products/") and path != "/api/rqams/v2/products/asset_units"
+        for path in paths
+    )
 
 
 def test_report_from_another_product_cannot_be_downloaded(service, tmp_path):

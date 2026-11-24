@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
+from threading import Lock
 from time import monotonic, sleep
 from urllib.parse import quote, urlsplit, urlunsplit
 import math
@@ -17,11 +18,8 @@ from .transport import DeadlineAdapter, request_deadline
 
 
 # 资源目录的复用窗口：同一客户端在这段时间内不重复列举产品、产品组与资产单元。
-# 索引及详情共用 5 分钟窗口；周期等配置也会影响业务路由，重建时不能留下旧详情。
+# 周期等配置直接来自集合记录，索引过期后重新列举。
 _CATALOG_TTL_SECONDS = 300.0
-
-# 目录逐项详情的并发上限：与 requests 对每个主机的默认连接池大小一致，避免请求在池上排队。
-_CATALOG_CONCURRENCY = 10
 
 # 只读的查询端点：它们用 POST 传参但只读数据、不改变资源集合，因此不作废目录缓存。
 # 白名单按保守方向维护——漏登记只会多一次目录重建，错登记才会留下过期目录，
@@ -108,6 +106,26 @@ def _wait_message(payload) -> str:
     return f"{base}（服务端最后返回：{hint}）" if hint else base
 
 
+def _filter_forbidden_resources(response: dict, collection: str, permission_key: str) -> dict:
+    """剔除平台明确拒绝的非所有者记录，不用列表推断业务端点权限。"""
+    permissions = response.get("permissions") or []
+    denied = {
+        str(row[permission_key]) for row in permissions
+        if row.get(permission_key) is not None and row.get("permission") == "forbidden"
+        and row.get("is_owner") is not True
+    }
+    if not denied:
+        return response
+    items = [item for item in response[collection] if str(item.get("id", item.get("_id"))) not in denied]
+    result = {
+        **response, collection: items,
+        "permissions": [row for row in permissions if str(row.get(permission_key)) not in denied],
+    }
+    if "total" in response:
+        result["total"] = len(items)
+    return result
+
+
 @dataclass(frozen=True)
 class ResourceRef:
     """已解析的资源；parent_id 用于依附产品的资产单元。"""
@@ -185,13 +203,11 @@ class Client:
         self._remember_settings = bool(used_saved_token and settings.get("token"))
         if self._remember_settings and explicit_workspace:
             remember_workspace(self.workspace_id, path=self._settings_path)
-        # (workspace_id, 抓取时刻, 目录条目)；切换空间与写入请求都会让它失效。
-        self._catalog_cache = None
-        # 轻量索引只含集合列表项，用于按 ID/名称定位；命中后才读该资源详情。
-        # 单资源解析不再为整个空间逐项拉详情，避免上百个资源时把解析放大成上百条请求。
+        # (workspace_id, 抓取时刻, 集合索引)；仅用于 ID/名称转换与业务路由配置。
+        # 不逐项读取详情或预判业务权限，实际操作交由后台鉴权。
         self._catalog_index_cache = None
-        # 已核验可读的详情缓存；键为 (type, parent_id, id)。
-        self._resource_detail_cache = {}
+        self._catalog_generation = 0
+        self._catalog_lock = Lock()
 
     def __getattr__(self, name):
         """懒加载功能块，未知名称抛 AttributeError。"""
@@ -395,41 +411,31 @@ class Client:
                     response.close()
                 sleep(max(0, min(interval, deadline - monotonic())))
 
-    def resource_catalog(self):
-        """读取当前工作空间的产品、组和资产单元；同一客户端在缓存窗口内复用同一份目录。
+    def resource_catalog(self, *, resource_type=None):
+        """读取当前空间的集合索引；不逐项请求详情或预判业务权限。
 
-        可见性由服务端与网关决定：只把能读到详情的资源放进目录，不比较读取级别，
-        越级调用交由它们拒绝。缓存是同一客户端 5 分钟内的视图：任何写入请求与切换空间都会让它失效
+        使用集合中已有的授权明细排除明确拒绝的记录；resource_type 只筛选返回类型。
+        缓存是同一客户端 5 分钟内的视图：写入请求与切换空间都会让它失效
         （只读的批量查询即使走 POST 也不失效），解析不到资源时会强制重建一次再判定。
-        并发身份各持一个客户端实例，因此缓存不加锁。
+        具体业务端点自行鉴权。不同工作空间使用独立实例，不在并发读取时切换空间。
         """
-        cached = self._cached_catalog()
-        if cached is not None:
-            return cached
-        return self._rebuild_catalog()
-
-    def _cached_catalog(self):
-        """返回当前空间的未过期目录；没有可用缓存时返回 None。"""
-        cache = self._catalog_cache
-        if cache is None:
-            return None
-        workspace_id, fetched_at, refs = cache
-        if workspace_id != self.workspace_id or monotonic() - fetched_at > _CATALOG_TTL_SECONDS:
-            return None
-        return refs
-
-    def _rebuild_catalog(self):
-        """淘汰旧详情后重建目录，避免新目录继续暴露旧配置或已撤销的访问。"""
-        self._clear_catalogs()
-        refs = self._build_catalog()
-        self._catalog_cache = (self.workspace_id, monotonic(), refs)
-        return refs
+        if resource_type is not None and resource_type not in {"product", "product_group", "asset_unit"}:
+            raise HarnessError("invalid_argument", "resource_type 必须为 product、product_group 或 asset_unit")
+        index, _ = self._catalog_index_snapshot()
+        return [ref for ref in index if ref.type == resource_type] if resource_type else list(index)
 
     def _clear_catalogs(self):
-        """清空目录、轻量索引与详情缓存；写入、切换空间或目录过期后调用。"""
-        self._catalog_cache = None
-        self._catalog_index_cache = None
-        self._resource_detail_cache.clear()
+        """清空集合索引；写入、切换空间或收到新可见范围时调用。"""
+        with self._catalog_lock:
+            self._catalog_generation += 1
+            self._catalog_index_cache = None
+
+    def _filter_resource_listing(self, response, collection, permission_key):
+        """发现明确拒绝时，丢弃旧目录及其依附记录。"""
+        filtered = _filter_forbidden_resources(response, collection, permission_key)
+        if filtered is not response:
+            self._clear_catalogs()
+        return filtered
 
     def _cached_catalog_index(self):
         """返回当前空间的未过期轻量索引；没有可用缓存时返回 None。"""
@@ -442,11 +448,19 @@ class Client:
         return refs
 
     def _rebuild_catalog_index(self):
-        """同步淘汰目录和详情后重建索引，不为旧详情延长缓存寿命。"""
-        self._clear_catalogs()
-        refs = self._build_catalog_index()
-        self._catalog_index_cache = (self.workspace_id, monotonic(), refs)
-        return refs
+        """重建集合索引；读取期间若已失效则不发布旧结果。"""
+        if self.workspace_id is None:
+            self._select_default_workspace()
+        for _ in range(2):
+            with self._catalog_lock:
+                generation = self._catalog_generation
+            refs = self._build_catalog_index()
+            with self._catalog_lock:
+                if generation == self._catalog_generation:
+                    self._catalog_generation += 1
+                    self._catalog_index_cache = (self.workspace_id, monotonic(), refs)
+                    return refs
+        raise HarnessError("resource_index_changed", "资源索引在读取期间失效，请重新查询")
 
     def _catalog_index_snapshot(self):
         """返回轻量索引与它是否直接来自缓存，供解析失败时判断能否只重建重试。"""
@@ -456,13 +470,7 @@ class Client:
         return self._rebuild_catalog_index(), False
 
     def _build_catalog_index(self):
-        """只列集合，不逐项拉详情；用于按 ID/名称定位单个或少量资源。
-
-        单资源解析不应为整个空间付出逐项详情请求；命中后再由 ``_fetch_detail``
-        核验该资源详情是否可读。目录列表与资产单元仍按集合顺序组装。
-        """
-        if self.workspace_id is None:
-            self._select_default_workspace()
+        """只列集合组装 ID/名称及路由配置，不对候选追加详情或权限请求。"""
         refs = []
         product_ids = set()
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -470,8 +478,11 @@ class Client:
                 path: pool.submit(self.call, "GET", path)
                 for path in ("products", "product_groups", "products/asset_units")
             }
-            for collection, kind in (("products", "product"), ("product_groups", "product_group")):
-                for identifier, item in self._catalog_entries(listings[collection].result(), collection):
+            for collection, kind, permission_key in (
+                ("products", "product", "product_id"), ("product_groups", "product_group", "group_id"),
+            ):
+                result = _filter_forbidden_resources(listings[collection].result(), collection, permission_key)
+                for identifier, item in self._catalog_entries(result, collection):
                     refs.append(ResourceRef(kind, identifier, item.get("name", ""), data=item))
                     if kind == "product":
                         product_ids.add(identifier)
@@ -482,53 +493,6 @@ class Client:
                 continue
             for unit in product.get("asset_units", []):
                 refs.append(ResourceRef("asset_unit", str(unit.get("id", unit.get("_id"))), unit.get("symbol", ""), parent, unit))
-        return refs
-
-    def _fetch_detail(self, ref):
-        """读取并缓存单个资源详情；403/404 表示读不到，返回 None。
-
-        产品与产品组走详情端点；资产单元没有详情端点，集合返回的就是完整记录。
-        其他错误原样抛出，保持与目录构建相同的失败语义。
-        """
-        key = (ref.type, ref.parent_id, ref.id)
-        if key in self._resource_detail_cache:
-            return self._resource_detail_cache[key]
-        if ref.type == "asset_unit":
-            return ref.data
-        collection = "products" if ref.type == "product" else "product_groups"
-        try:
-            detail = self.call("GET", f"{collection}/{quote(ref.id, safe='')}")
-        except HarnessError as exc:
-            if exc.status in {403, 404}:
-                return None
-            raise
-        self._resource_detail_cache[key] = detail
-        return detail
-
-    def _build_catalog(self):
-        """重建完整目录：先取轻量索引，再按集合顺序核验每个资源的详情。
-
-        详情读取失败按可见性语义处理：403/404 视为读不到而跳过，其他错误原样抛出；
-        并发下多个错误同时出现时按资源在集合中的顺序抛出第一个，保证同一环境下报错可复现。
-        """
-        index = self._build_catalog_index()
-        # 完整目录已经包含这份索引：顺手写入索引缓存，后续单资源解析不必再列一次集合。
-        self._catalog_index_cache = (self.workspace_id, monotonic(), index)
-        refs = []
-        with ThreadPoolExecutor(max_workers=_CATALOG_CONCURRENCY) as pool:
-            pending = [
-                (ref, pool.submit(self._fetch_detail, ref) if ref.type != "asset_unit" else None)
-                for ref in index
-            ]
-            for ref, future in pending:
-                if future is None:
-                    refs.append(ref)
-                    continue
-                detail = future.result()
-                if detail is None:
-                    continue
-                self._resource_detail_cache[(ref.type, ref.parent_id, ref.id)] = detail
-                refs.append(ResourceRef(ref.type, ref.id, detail.get("name", ref.name), ref.parent_id, detail))
         return refs
 
     @staticmethod
@@ -549,26 +513,14 @@ class Client:
             raise HarnessError("invalid_resource", "resource 必须为非空 ID 或名称字符串")
         return resource
 
-    def _match_visible(self, catalog, resource, allowed):
-        """在轻量索引中匹配资源，并只对候选项读取详情核验可见性。
-
-        详情 403/404 的候选项视为读不到：全部读不到时报不存在，仍有多个可读时报歧义，
-        只有一个可读时再校验资源类型。这样单个资源解析只需一次详情请求，而不是全空间逐项请求。
-        """
+    def _match_resource(self, catalog, resource, allowed):
+        """仅在集合索引中转换唯一 ID/名称并检查类型，不预检业务权限。"""
         matches = [ref for ref in catalog if resource in {ref.id, ref.name}]
         if not matches:
             raise HarnessError("resource_not_found", "资源不存在或不可访问", status=404, details={"resource": resource})
-        visible = []
-        for ref in matches:
-            detail = self._fetch_detail(ref)
-            if detail is None:
-                continue
-            visible.append(ResourceRef(ref.type, ref.id, detail.get("name", ref.name), ref.parent_id, detail))
-        if not visible:
-            raise HarnessError("resource_not_found", "资源不存在或不可访问", status=404, details={"resource": resource})
-        if len(visible) > 1:
-            raise HarnessError("ambiguous_resource", "资源存在歧义，请使用候选项 ID", status=400, details={"resource": resource, "candidates": [ref.to_dict() for ref in visible]})
-        ref = visible[0]
+        if len(matches) > 1:
+            raise HarnessError("ambiguous_resource", "资源存在歧义，请使用候选项 ID", status=400, details={"resource": resource, "candidates": [ref.to_dict() for ref in matches]})
+        ref = matches[0]
         if ref.type not in allowed:
             raise HarnessError("unsupported_resource", "此操作不支持目标资源类型", status=400, details={"resource": ref.to_dict(), "allowed": sorted(allowed)})
         return ref
@@ -578,31 +530,37 @@ class Client:
         checked = self._checked(resource)
         catalog, cached = self._catalog_index_snapshot()
         try:
-            return self._match_visible(catalog, checked, allowed)
+            return self._match_resource(catalog, checked, allowed)
         except HarnessError as exc:
             if not cached or exc.code != "resource_not_found":
                 raise
         # 刚被授权的资源可能还没进缓存索引：强制重建一次再判定，仍找不到才报不存在。
-        return self._match_visible(self._rebuild_catalog_index(), checked, allowed)
+        return self._match_resource(self._rebuild_catalog_index(), checked, allowed)
 
     def resolve_many(self, resources, allowed):
         """在单个轻量索引快照上逐项解析多个资源并去重，保持首次出现顺序。"""
+        return self._resolve_many(resources, allowed, refresh=False)
+
+    def _resolve_many(self, resources, allowed, *, refresh):
+        """校验数组，并按业务是否需要新可见范围选择索引。"""
         if not isinstance(resources, list) or not resources:
             raise HarnessError("invalid_argument", "resources 必须为非空资源数组")
         checked = [self._checked(resource) for resource in resources]
+        if refresh:
+            return self._match_many_resources(self._rebuild_catalog_index(), checked, allowed)
         catalog, cached = self._catalog_index_snapshot()
         try:
-            return self._match_many_visible(catalog, checked, allowed)
+            return self._match_many_resources(catalog, checked, allowed)
         except HarnessError as exc:
             if not cached or exc.code != "resource_not_found":
                 raise
-        return self._match_many_visible(self._rebuild_catalog_index(), checked, allowed)
+        return self._match_many_resources(self._rebuild_catalog_index(), checked, allowed)
 
-    def _match_many_visible(self, catalog, checked, allowed):
-        """逐项匹配并只读取命中项的详情，去重后保持首次出现顺序。"""
+    def _match_many_resources(self, catalog, checked, allowed):
+        """用同一集合索引逐项转换资源，去重后保持首次出现顺序。"""
         refs, seen = [], set()
         for resource in checked:
-            ref = self._match_visible(catalog, resource, allowed)
+            ref = self._match_resource(catalog, resource, allowed)
             key = (ref.type, ref.parent_id, ref.id)
             if key not in seen:
                 seen.add(key)

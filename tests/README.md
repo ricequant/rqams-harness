@@ -16,7 +16,7 @@ python -m pip install -e .
 python -m pytest tests -q
 ```
 
-测试按业务块覆盖已实现的消费者可见行为与错误边界，不代表当前全部公开操作均有调用覆盖；操作集合以 `rqamsh schema` 为准。重点回归包括部署凭据隔离、地址优先级、目录详情过期、实时/历史分流、批量部分失败及模拟交易逐文件失败。用例文件按业务块划分（如 `test_products.py`、`test_balances.py`、`test_analytics.py`、`test_permissions.py`、`test_workspaces.py`、`test_trades.py`、`test_paper_trading.py`），`test_client.py` 提供共用的 `service` fixture：它启动真实的 `ThreadingHTTPServer`；业务请求按脚本顺序出队，资源目录端点按路径匹配——`catalog_routes(...)` 一次登记三个集合端点与逐项详情，使断言不依赖并发到达顺序。测试验证实际 HTTP 请求和返回/异常，不验证服务端计算，也不能证明真实环境联调或端到端耗时已达标。
+测试按业务块覆盖已实现的消费者可见行为与错误边界，不代表当前全部公开操作均有调用覆盖；操作集合以 `rqamsh schema` 为准。重点回归包括部署凭据隔离、地址优先级、集合索引过期、实时/历史分流、批量部分失败及模拟交易逐文件失败。用例文件按业务块划分（如 `test_products.py`、`test_balances.py`、`test_analytics.py`、`test_permissions.py`、`test_workspaces.py`、`test_trades.py`、`test_paper_trading.py`），`test_client.py` 提供共用的 `service` fixture：它启动真实的 `ThreadingHTTPServer`；业务请求按脚本顺序出队，资源目录端点按路径匹配——`catalog_routes(...)` 一次登记三个集合端点，使断言不依赖并发到达顺序。测试验证实际 HTTP 请求和返回/异常，不验证服务端计算，也不能证明真实环境联调或端到端耗时已达标。
 
 ## 本机联调：首次网页登录，后续复用身份
 
@@ -34,7 +34,7 @@ CLI 支持自动登录，也支持临时覆盖：`rqamsh workspaces list`（首�
 
 - 令牌的取得方式与有效期由 AMS 平台决定；过期后重新运行 `rqamsh auth`，客户端不代办账号密码登录、也不会替你续期。
 - `workspace_id` 可以省略：复用同部署保存身份时优先使用设置文件中的最后空间，否则读取 `GET <部署>/api/user/v1/workspaces` 的成员列表——非空时使用服务端当次返回的首项，零项报 `resource_not_found`。首项按服务端原序取，不排序、不按权益筛选；首项缺权益由服务端拒绝，不换后项。令牌关联用户，可在自己的成员空间之间切换；`workspaces.use` 失败不改变当前空间、缓存与设置。
-- 目录可见性只看详情能否读到：读不到（403/404）的资源不进目录；客户端不查授权行、不做权限预判，越权由服务端与网关拒绝。
+- 资源解析只在集合索引中按精确 ID／名称匹配，不请求详情；产品与产品组列表复用响应中的已有授权行排除明确拒绝的非所有者记录。业务操作的权限仍由服务端与网关判定。
 - 凭据可保存在 `rqamsh_settings.json`（含明文令牌，应限制为当前用户可读），或临时走命令行参数/环境变量/`--token @文件`；禁止写进脚本、证据 JSON 或提交记录；HTTPS 证书校验保持开启，不要为了避免报错而关闭校验。
 - 自签或内网证书环境需要管理员提供可用入口，不要改 `verify`。
 

@@ -20,18 +20,17 @@ def _asset_unit_catalog(units):
 
 
 def test_batch_list_uses_one_catalog_snapshot(service):
-    """多产品只构建一次目录，重复输入去重并保持首现顺序。"""
+    """批量对账仅列举一次资源集合，不预检详情，重复输入保留首现顺序。"""
     client, state = service
     rows = [{"id": "p1", "name": "一号", "user_id": 1}, {"id": "p2", "name": "二号", "user_id": 1}]
     state["catalog"] = _catalog(rows)
     state["responses"] = [(200, [{"product_id": "p1"}, {"product_id": "p2"}])]
     result = client.reconciliation.list(["一号", "p2", "p1"], start_date="2026-08-01", end_date="2026-08-31")
     assert result == [{"product_id": "p1"}, {"product_id": "p2"}]
-    # 目录请求并发发出、到达顺序不确定：只断言被请求的目录端点集合与条数（每个恰好一次）。
+    # 集合请求并发发出，到达顺序不确定。
     gets = sorted(request[1] for request in state["requests"] if request[0] == "GET")
     assert gets == sorted([
-        "/api/rqams/v2/products", "/api/rqams/v2/products/p1", "/api/rqams/v2/products/p2",
-        "/api/rqams/v2/product_groups", "/api/rqams/v2/products/asset_units",
+        "/api/rqams/v2/products", "/api/rqams/v2/product_groups", "/api/rqams/v2/products/asset_units",
     ])
     posts = [request for request in state["requests"] if request[0] == "POST"]
     assert posts[0][1] == "/api/rqams/v2/products:batch_get_reconciliation_list"

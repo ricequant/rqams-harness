@@ -24,18 +24,18 @@ Python 签名：`rqamsh.products.list(*, fields: list[str] | None=None, sources:
 |`sources`|`list[str] \| None`|`None`|产品 data_source 枚举列表，不是流水来源。|
 |`member_user_id`|`int \| None`|`None`|按指定成员获分享的产品筛选，不突破当前用户可访问范围。|
 
-返回：当前身份可见的产品列表对象，含 `products`、`total` 与 `permissions`。
+返回：产品列表对象，含 `products`、`total` 与 `permissions`。SDK 用同一响应的授权行排除明确拒绝的非所有者记录，不逐项读取详情；规则见[资源权限](permissions.md#可见不等于可写)。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`products`|产品列表|array（object 元素）|—|可访问产品数组，按创建时间倒序；元素为[产品配置](fields/products.md#product)|恒返回；元素字段由 `fields` 选择（省略时用服务端默认字段，恒保留 `id`），空数组表示当前范围内没有可见产品|
-|`total`|产品条数|integer|条|`products` 的元素个数|恒返回；按最终可见产品重新计数，始终等于 `products` 的长度|
-|`permissions`|产品授权明细|array（object 元素）|—|平台按请求人权限产出的授权行；判断「我对这个产品能做什么」只用它，不要用资源能否读到推断|由平台生成，客户端不重算；返回时 `permissions` 可能包含不出现在 `products` 中的产品；按 `product_id` 匹配，不要按数组下标或假设一一对应|
-|`permissions[].product_id`|产品 ID|string|—|该授权行对应的产品|随父级记录返回；可用于与 `products[].id` 匹配，但该 ID 不保证仍出现在最终 `products` 中；不要用数组下标代替该字段|
-|`permissions[].permission`|本人权限级别|string（枚举）|—|请求人在该产品上的显式授权级别，取值见[权限级别](permissions.md#权限级别)|随父级记录返回；`forbidden` 表示没有显式授权行，不等于不可读——创建者与空间管理员仍按最高级别处理；普通成员不会在列表里看到无权产品|
-|`permissions[].is_owner`|是否本人资源|boolean|—|`true` 表示请求人是工作空间管理员或该产品创建者；`false` 表示仅通过他人分享获得|随父级记录返回；`true` 时实际权限按创建者/管理员最高级别处理，不能仅凭同行的 `permission=forbidden` 判为不可读|
+|`products`|产品列表|array（object 元素）|—|可访问产品数组，按后台原顺序返回；元素为[产品配置](fields/products.md#product)|元素字段由 `fields` 选择（省略时用服务端默认字段，保留 `id`）；空数组表示本次范围内没有可见产品|
+|`total`|产品条数|integer|条|可见产品数量|有明确拒绝的记录被排除时按返回的 `products` 重算；否则保留服务端值|
+|`permissions`|产品授权明细|array（object 元素）|—|平台返回的请求人权限明细|随列表排除被拒绝资源的授权行，不修改其余授权级别；按产品 ID 匹配|
+|`permissions[].product_id`|产品 ID|string|—|该条明细对应的产品|随父级记录返回；该 ID 不保证仍出现在最终 `products` 中|
+|`permissions[].permission`|本人权限级别|string（枚举）|—|请求人在该产品上的显式授权级别|随父级记录返回；取值见[权限级别](permissions.md#权限级别)|
+|`permissions[].is_owner`|管理身份标志|boolean|—|请求人是否为工作空间管理员或该产品创建者|随父级记录返回；与 `permission` 的关系见[可见不等于可写](permissions.md#可见不等于可写)|
 
-结果检查：列表只包含当前身份可见的产品；产品多时首次列表会变慢。用 products 中的 ID 选择后续操作目标。指定 fields 时仍返回 id；total 是可访问范围内数量，member_user_id 筛选不会授予额外权限。需要判断写入或导出能否执行时，若该 `product_id` 仍在 `products` 中，按 `product_id` 找到对应授权行（`write`/`admin` 才可改）；不要按数组下标，也不要用「能读到」推断「能改」。范围提醒：实盘/模拟由 `label` 表达（`live`/`paper`/`paper_trading`）；`product_state`、`closing_date`、`maturity_date`、`fund_code` 是与实盘属性彼此独立的维度。是否把已封账、已终止、已到期或未备案的产品算进本次范围属于业务口径，涉及这类范围时先向用户确认，不按字段名推断、也不默认排除。
+结果检查：用 `products` 中的 ID 选择目标；列出不表示业务端点允许当前操作。范围提醒：实盘/模拟由 `label` 表达（`live`/`paper`/`paper_trading`）；`product_state`、`closing_date`、`maturity_date`、`fund_code` 是与实盘属性彼此独立的维度。是否把已封账、已终止、已到期或未备案的产品算进本次范围属于业务口径，不按字段名推断、也不默认排除。
 
 ```python
 result = rqamsh.products.list()
@@ -357,7 +357,7 @@ rqamsh products enable-shares --resource "授权测试产品" --shares @shares.j
 ## valuation_report_missing_dates
 列出各产品缺失估值表的交易日数量，用于批量核对哪些产品需要补表。起算点是产品封账日，未封账时使用交易起始日；截止为最近结算日，只统计其中的交易日。
 
-这是工作空间级检查：服务端按当前身份返回数据，客户端再按目录过滤，只保留当前用户可见的产品。
+这是工作空间级检查：服务端按当前身份返回数据，客户端原样返回，不追加详情核验或二次过滤。
 
 Python 签名：`rqamsh.products.valuation_report_missing_dates()`。
 
@@ -365,7 +365,7 @@ Python 签名：`rqamsh.products.valuation_report_missing_dates()`。
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`[]`|单条缺表汇总|object|—|根数组元素，对应一个产品，子键见本表其余各行|恒返回；服务端按当前身份统计，客户端再按可见目录过滤后返回|
+|`[]`|单条缺表汇总|object|—|根数组元素，对应一个产品，子键见本表其余各行|恒返回；服务端按当前身份统计并返回，客户端原样透传|
 |`[].product_id`|归属产品 ID|string|字符串 ID|该汇总对应的产品记录 ID|恒返回；只读，可与 `list` 返回的 `id` 对照|
 |`[].product_name`|产品名称|string|—|该产品名称|恒返回；只读|
 |`[].product_full_name`|产品全称|string / null|—|产品全称，用于展示识别|恒返回；未填写全称时为 `null`|
@@ -387,7 +387,7 @@ rqamsh products valuation-report-missing-dates
 
 `file_type` 取值见[可校验文件类型](#hashablefiletype)。三类都会为请求到的产品返回条目，`hash_list` 为空数组表示该产品没有该类型的已上传哈希；唯一会缺席的是估值报告分支的数据源过滤——非估值报告数据源产品被排除，不返回条目。
 
-访问条件见[最低权限级别](permissions.md#逐操作最低权限级别)。
+访问条件见[最低权限级别](permissions.md#逐操作最低权限级别)。查询前刷新产品索引，不沿用旧的可见范围；任一产品不可定位则不提交本批哈希查询。
 
 Python 签名：`rqamsh.products.uploaded_file_hashes(product_ids: list[str], file_type: str)`。
 

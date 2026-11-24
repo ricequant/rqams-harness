@@ -9,20 +9,22 @@ from ._base import _Resource, _nonempty, _segment
 
 
 class AssetUnits(_Resource):
-    """产品所属资产单元；读取复用真实批量目录，写入使用归属产品路径。"""
+    """产品所属资产单元；读取只走批量目录，写入使用归属产品路径。"""
 
     def list(self, resource: str | None = None) -> list[dict[str, Any]]:
-        """列出可访问资产单元，不调用不存在的产品内资产单元 GET。
+        """列出资产单元，只按批量目录展开，不调用单条详情端点。
 
         Args:
-            resource: 可选归属产品唯一 ID 或名称；省略列出当前工作空间可访问资产单元。
+            resource: 可选归属产品唯一 ID 或名称；省略列出全部可访问资产单元。
         Returns:
-            目录中原始资产单元对象组成的列表，包含 id、product_id、symbol 等字段。
+            批量目录中原始资产单元对象组成的列表，包含 id、symbol 等字段；指定产品时只含该产品的资产单元。
         """
         product_id = self._client.resolve(resource, {"product"}).id if resource is not None else None
+        rows = self._client.call("GET", "products/asset_units")
         return [
-            dict(ref.data) for ref in self._client.resource_catalog()
-            if ref.type == "asset_unit" and (product_id is None or ref.parent_id == product_id)
+            dict(unit)
+            for product in rows if product_id is None or str(product.get("product_id")) == product_id
+            for unit in product.get("asset_units", [])
         ]
 
     def get(self, resource: str) -> dict[str, Any]:
@@ -149,13 +151,6 @@ class PositionsStatements(_Resource):
         Returns:
             服务端原始数组，每项含 product_id、product_name 与 positions_statement_items；
             items 含 asset_unit_name、asset_unit_id 与 update_time（未上传时为「未上传持仓单」）；
-            只保留当前身份在目录中可见的资产单元，无剩余项的产品被丢弃。
+            可见性由服务端按当前身份过滤。
         """
-        rows = self._client.call("GET", "products/asset_units/positions_statement:get_latest")
-        visible = {ref.id for ref in self._client.resource_catalog() if ref.type == "asset_unit"}
-        result = []
-        for row in rows:
-            items = [item for item in row.get("positions_statement_items", []) if str(item.get("asset_unit_id")) in visible]
-            if items:
-                result.append({**row, "positions_statement_items": items})
-        return result
+        return self._client.call("GET", "products/asset_units/positions_statement:get_latest")

@@ -13,7 +13,75 @@ def _catalog(products, units=None, groups=()):
     return catalog_routes(products=products, groups=groups, units=units or ())
 
 
+@pytest.mark.parametrize("resource_type", ["product", "product_group", "asset_unit"])
+def test_resource_lists_do_not_request_details(service, resource_type):
+    """列表直接使用各自集合响应，任何类型的详情故障都不影响列表。"""
+    client, state = service
+    product = {"id": "p1", "name": "产品"}
+    group = {"id": "g1", "name": "组"}
+    units = [{"product_id": "p1", "asset_units": [{"id": "u1", "symbol": "标的"}]}]
+    state["catalog"] = catalog_routes(
+        [product], [group], units,
+        overrides={"p1": (500, {"message": "产品详情故障"}), "g1": (500, {"message": "组详情故障"})},
+    )
+    if resource_type == "product":
+        result = client.products.list()
+        assert result["products"] == [product]
+        expected_path = "products"
+    elif resource_type == "product_group":
+        assert client.product_groups.list() == {"product_groups": [group]}
+        expected_path = "product_groups"
+    else:
+        assert client.asset_units.list() == [{"id": "u1", "symbol": "标的"}]
+        expected_path = "products/asset_units"
+    assert [request[1] for request in state["requests"]] == [f"/api/rqams/v2/{expected_path}"]
+
+
+def test_resource_list_type_caches_do_not_hide_other_resource_types(service):
+    """先列组再列产品或完整目录，不能把前一次类型子集当成全目录。"""
+    client, state = service
+    product = {"id": "p1", "name": "产品"}
+    group = {"id": "g1", "name": "组"}
+    state["catalog"] = catalog_routes([product], [group])
+    assert client.product_groups.list() == {"product_groups": [group]}
+    assert client.products.list()["products"] == [product]
+    assert [(ref.type, ref.id) for ref in client.resource_catalog()] == [
+        ("product", "p1"), ("product_group", "g1"),
+    ]
+
+
+def test_group_list_preserves_backend_metadata_without_detail_preflight(service):
+    """组列表移除明确拒绝的组，保留所有者及与业务状态相关的字段。"""
+    client, state = service
+    group = {"id": "g1", "name": "组", "accessible": False, "accessible_err_msg": "成员未就绪"}
+    denied = {"id": "g2", "name": "不可见组"}
+    owner_row = {"group_id": "g1", "permission": "forbidden", "is_owner": True}
+    denied_row = {"group_id": "g2", "permission": "forbidden", "is_owner": False}
+    payload = {"product_groups": [group, denied], "total": 2, "permissions": [denied_row, owner_row]}
+    state["catalog"] = catalog_routes(groups=[group, denied], denied=["g2"])
+    state["catalog"].routes["product_groups"] = (200, payload)
+    assert client.product_groups.list() == {"product_groups": [group], "total": 1, "permissions": [owner_row]}
+    state["catalog"].routes["product_groups"] = (200, {"product_groups": [], "total": 0, "permissions": []})
+    assert client.product_groups.list() == {"product_groups": [], "total": 0, "permissions": []}
+    assert [request[1] for request in state["requests"]] == ["/api/rqams/v2/product_groups"] * 2
+
+
 _OWN = {"id": "p1", "name": "own", "user_id": 1}
+
+
+def test_product_list_returns_backend_fields_without_detail_preflight(service):
+    """只剔除集合中明确拒绝的非所有者记录，投影字段不影响判定。"""
+    client, state = service
+    products = [{"id": f"p{index}", "name": f"产品{index}"} for index in range(120)]
+    payload = {"products": products, "total": 120, "permissions": [
+        {"product_id": "p0", "permission": "forbidden", "is_owner": False},
+    ]}
+    state["catalog"] = catalog_routes(products, denied=[item["id"] for item in products])
+    state["catalog"].routes["products"] = (200, payload)
+    assert client.products.list(fields=["name"]) == {"products": products[1:], "total": 119, "permissions": []}
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/products?fields=name%2Cid"),
+    ]
 
 
 def test_field_exists_routes_account_name_to_dedicated_endpoint(service):
@@ -69,27 +137,25 @@ def test_create_example_polls_the_get_endpoint(service):
     assert state["requests"][0][1] == "/api/rqams/v2/products:create_example"
 
 
-def test_valuation_report_missing_dates_filters_unreadable_products(service):
-    """工作空间级缺表汇总只返回目录里可见的产品（详情读不到的他人产品被排除）。"""
+def test_valuation_report_missing_dates_preserves_backend_result(service):
+    """工作空间级缺表汇总直接保留后台已裁定的结果，不再按详情权限过滤。"""
     client, state = service
     rows = [
         {"product_id": "p1", "product_name": "own", "missing_date_count": 2},
         {"product_id": "p2", "product_name": "hidden", "missing_date_count": 5},
     ]
     state["responses"] = [(200, rows)]
-    # p2 的详情读不到（403），所以它不进目录，汇总结果里同样要被排除。
     state["catalog"] = catalog_routes(
         products=[{"id": "p1", "name": "own", "user_id": 1}, {"id": "p2", "name": "hidden", "user_id": 2}],
         denied=["p2"],
     )
-    assert client.products.valuation_report_missing_dates() == [rows[0]]
-    assert any(item[1] == "/api/rqams/v2/products:valuation_report_missing_date" for item in state["requests"])
+    assert client.products.valuation_report_missing_dates() == rows
+    assert [item[1] for item in state["requests"]] == ["/api/rqams/v2/products:valuation_report_missing_date"]
 
 
-def test_uploaded_file_hashes_resolves_ids_without_permission_lookup(service):
-    """解析只读目录，不额外查询权限：他人产品照常解析，请求按解析后的 ID 提交。"""
+def test_uploaded_file_hashes_requires_current_catalog_visibility(service):
+    """他人产品获准时可以查哈希；权限撤销后不沿用缓存，也不发送哈希请求。"""
     client, state = service
-    # 同一客户端只登记一份目录（含他人产品）：写入会作废缓存，第二次解析由同一路由表重建。
     state["catalog"] = _catalog([_OWN, {"id": "p2", "name": "shared", "user_id": 2}])
     state["responses"] = [(200, [{"product_id": "p1", "hash_list": ["h1"]}])]
     assert client.products.uploaded_file_hashes(["own"], "trade") == [{"product_id": "p1", "hash_list": ["h1"]}]
@@ -98,6 +164,15 @@ def test_uploaded_file_hashes_resolves_ids_without_permission_lookup(service):
     state["responses"] = [(200, [{"product_id": "p2", "hash_list": []}])]
     assert client.products.uploaded_file_hashes(["shared"], "trade") == [{"product_id": "p2", "hash_list": []}]
     assert json.loads(state["requests"][-1][2]) == {"product_ids": ["p2"], "file_type": "trade"}
+    state["catalog"].routes["products"][1]["permissions"] = [
+        {"product_id": "p2", "permission": "forbidden", "is_owner": False},
+    ]
+    state["requests"].clear()
+    state["responses"] = [(200, [{"product_id": "p2", "hash_list": ["旧可见范围"]}])]
+    with pytest.raises(HarnessError) as error:
+        client.products.uploaded_file_hashes(["shared"], "trade")
+    assert error.value.code == "resource_not_found"
+    assert all(method == "GET" for method, *_ in state["requests"])
 
 
 def test_uploaded_file_hashes_rejects_unknown_file_type(service):
@@ -147,8 +222,7 @@ def test_compute_state_reads_state_without_waiting(service):
     request = state["requests"][-1]
     assert (request[0], request[1]) == ("GET", "/api/rqams/v2/products/p1/compute_state")
     assert request[2] == b""
-    # 目录四条（三个集合 + 一条详情）+ 状态一次：状态不是任务句柄，不追加任何轮询请求。
-    assert len(state["requests"]) == 5
+    assert sum("/compute_state" in item[1] for item in state["requests"]) == 1
 
 
 @pytest.mark.parametrize("accounts", [[], None])

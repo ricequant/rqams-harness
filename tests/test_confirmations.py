@@ -6,15 +6,15 @@ from test_client import catalog_routes, service
 from rqamsh.errors import HarnessError
 
 
-def test_latest_sends_source_and_filters_visible_products(service):
-    """工作空间级凭证查询必须带展示名与 filter，并过滤不可见产品。"""
+def test_latest_sends_source_and_keeps_server_rows(service):
+    """工作空间级凭证查询必须带展示名与 filter，并原样保留后台已过滤的记录。"""
     client, state = service
-    rows = [{"product_id": "p1", "product_name": "own"}, {"product_id": "p2", "product_name": "hidden"}]
-    state["catalog"] = catalog_routes([{"id": "p1", "name": "own", "user_id": 1}])
+    rows = [{"product_id": "p1", "product_name": "own"}, {"product_id": "p2", "product_name": "shared"}]
     state["responses"] = [(200, rows)]
-    assert client.confirmations.latest("CustodianEvents") == [rows[0]]
-    confirmations = [request[1] for request in state["requests"] if "/confirmations" in request[1]]
-    assert confirmations[0].endswith("/confirmations?source=CustodianEvents&filter=latest")
+    assert client.confirmations.latest("CustodianEvents") == rows
+    assert [(method, path) for method, path, *_ in state["requests"]] == [
+        ("GET", "/api/rqams/v2/confirmations?source=CustodianEvents&filter=latest"),
+    ]
 
 
 def test_list_passes_unit_and_date_filters(service):

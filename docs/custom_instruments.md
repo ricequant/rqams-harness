@@ -36,8 +36,8 @@ Python 签名：`rqamsh.custom_instruments.list(*, resource: str | None=None, as
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`customized_instruments`|自定义标的列表|array（object 元素）|—|当前工作空间内可访问的自定义标的；元素键见[自定义标的基本信息](fields/custom_instruments.md#customizedinstrument)，但整体不含 `fair_values`|恒返回；客户端已按归属产品可访问性过滤，并按 offset / limit 本地切片|
-|`total`|可访问标的数量|integer|条|客户端过滤后、分页前的可访问标的条数|恒返回；分页在客户端完成，因此它不是服务端返回的原始总数|
+|`customized_instruments`|自定义标的列表|array（object 元素）|—|当前工作空间内可访问的标的；元素键见[自定义标的基本信息](fields/custom_instruments.md#customizedinstrument)，不含 `fair_values`|先按空间和归属产品的可见范围筛选，再按 offset / limit 本地切片|
+|`total`|可见标的数量|integer|条|筛选后、本地分页前的标的条数|不是服务端返回的原始总数|
 
 结果检查：读取 customized_instruments 与 total；分页时继续查询直到取得需求范围内结果。列表不含 fair_values，不能据此判断标的尚无价格。
 
@@ -85,7 +85,7 @@ Python 签名：`rqamsh.custom_instruments.create(resource: str, asset_class: st
 
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
-|`resource`|`str`|必填|归属产品唯一 ID 或名称，必须是当前可访问的产品；不存在时请求失败。|
+|`resource`|`str`|必填|归属产品唯一 ID 或名称，必须能在当前空间集合索引中精确匹配；是否可访问与可写由服务端判定。|
 |`asset_class`|`str`|必填|当前服务端只接受 stock、otc_option、otc_futures、other_fund、total_return_swap、bond、repo、reverse_repo 这 8 个取值；超出取值范围会被拒绝。|
 |`order_book_id`|`str`|必填|自定义资产代码。|
 |`symbol`|`str`|必填|资产名称。|
@@ -107,7 +107,7 @@ rqamsh custom-instruments create --resource "授权测试产品" --asset-class "
 ```
 
 ## update
-局部修改自定义标的基础字段，不修改价格历史，也不提交估值重算。
+局部修改自定义标的基础字段，不修改价格历史，也不提交估值重算。修改前核对现有记录的空间及原归属；权限边界见[资源权限](permissions.md#可见不等于可写)。
 
 Python 签名：`rqamsh.custom_instruments.update(instrument_id: str, *, resource: str | None=None, asset_class: str | None=None, order_book_id: str | None=None, symbol: str | None=None)`。
 

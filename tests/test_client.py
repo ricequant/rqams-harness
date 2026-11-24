@@ -234,10 +234,6 @@ def test_name_ambiguity_is_not_silently_resolved(monkeypatch):
 
     with Client("http://localhost:21015", "012345678901234567890123", token="test") as client:
         refs = [ResourceRef("product", "p1", "同名"), ResourceRef("product_group", "g1", "同名")]
-        client._resource_detail_cache = {
-            ("product", None, "p1"): {"id": "p1", "name": "同名"},
-            ("product_group", None, "g1"): {"id": "g1", "name": "同名"},
-        }
         monkeypatch.setattr(client, "_catalog_index_snapshot", lambda: (refs, False))
         with pytest.raises(HarnessError) as error:
             client.resolve("同名", {"product", "product_group"})
@@ -256,16 +252,30 @@ def test_side_effecting_get_without_task_is_not_replayed(service):
     assert len(state["requests"]) == 1
 
 
-def test_catalog_visibility_comes_from_detail_readability(service):
-    """目录可见性只看详情能否读到：读得到就进目录，读不到（403 或 404）就跳过，不额外查权限端点。"""
+def test_catalog_excludes_explicit_denials_and_their_asset_units(service):
+    """目录不暴露明确拒绝记录，不把详情探测作为名称消歧的前提。"""
     client, state = service
     product = {"id": "p1", "name": "shared", "user_id": 2}
-    forbidden = {"id": "p2", "name": "forbidden", "user_id": 3}
+    forbidden = {"id": "p2", "name": "shared", "user_id": 3}
     missing = {"id": "p3", "name": "missing", "user_id": 4}
     state["catalog"] = catalog_routes(
-        [product, forbidden, missing], denied=["p2"], overrides={"p3": (404, {"message": "资源不存在"})}
+        [product, forbidden, missing], groups=[{"id": "g1", "name": "不可见组"}],
+        units=[{"product_id": "p2", "asset_units": [{"id": "u1", "symbol": "不可见单元"}]}],
+        denied=["p2", "g1"], overrides={"p3": (404, {"message": "资源不存在"})},
     )
-    assert [(ref.type, ref.id) for ref in client.resource_catalog()] == [("product", "p1")]
+    state["catalog"].routes["products"][1]["permissions"] = [
+        {"product_id": "p2", "permission": "forbidden", "is_owner": False},
+    ]
+    state["catalog"].routes["product_groups"][1]["permissions"] = [
+        {"group_id": "g1", "permission": "forbidden", "is_owner": False},
+    ]
+    assert [(ref.type, ref.id) for ref in client.resource_catalog()] == [
+        ("product", "p1"), ("product", "p3"),
+    ]
+    assert client.resolve("shared", {"product"}).id == "p1"
+    assert {request[1] for request in state["requests"]} == {
+        f"/api/rqams/v2/{path}" for path in _CATALOG_COLLECTIONS
+    }
     assert not any(request[1].endswith("/permissions") for request in state["requests"])
 
 
@@ -480,16 +490,32 @@ def test_external_or_parent_paths_never_send_a_request(service, path):
     assert state["requests"] == []
 
 
-def test_single_resolve_reads_only_matched_detail(service):
-    """单资源解析只拉命中项的详情：其余产品不进入请求，避免上百条逐项详情。"""
+def test_single_resolve_uses_listing_without_detail_preflight(service):
+    """名称转 ID 只依赖集合记录，详情拒绝不能阻止其他业务端点鉴权。"""
     client, state = service
-    state["catalog"] = catalog_routes([{"id": "p1", "name": "目标"}, {"id": "p2", "name": "其他"}, {"id": "p3", "name": "另一个"}])
+    product = {"id": "p1", "name": "目标", "realtime_period_type": "daytime"}
+    state["catalog"] = catalog_routes(
+        [product, {"id": "p2", "name": "其他"}], denied=["p1", "p2"],
+    )
     assert client.resolve("目标", {"product"}).id == "p1"
+    assert client.resolve("p1", {"product"}).data == product
     paths = [request[1] for request in state["requests"] if request[0] == "GET"]
-    assert paths.count("/api/rqams/v2/products/p1") == 1
-    assert paths.count("/api/rqams/v2/products/p2") == 0
-    assert paths.count("/api/rqams/v2/products/p3") == 0
+    assert set(paths) == {f"/api/rqams/v2/{path}" for path in _CATALOG_COLLECTIONS}
     assert collection_hits(state) == dict.fromkeys(_CATALOG_COLLECTIONS, 1)
+
+
+def test_business_permission_error_is_not_replaced_by_detail_preflight(service):
+    """只读名称转换后直接发业务请求，保留该路由的权限拒绝与诊断。"""
+    client, state = service
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "产品"}], denied=["p1"])
+    state["responses"] = [(403, {"message": "业务端点拒绝"})]
+    with pytest.raises(HarnessError) as error:
+        client.products.compute_state("产品")
+    assert error.value.code == "permission_denied"
+    assert error.value.status == 403
+    assert "业务端点拒绝" in str(error.value)
+    assert state["requests"][-1][1] == "/api/rqams/v2/products/p1/compute_state"
+    assert not any(request[1] == "/api/rqams/v2/products/p1" for request in state["requests"])
 
 
 def test_catalog_is_reused_within_one_client(service):
@@ -502,6 +528,56 @@ def test_catalog_is_reused_within_one_client(service):
     assert client.resolve("产品", {"product"}).id == "p1"
     assert collection_hits(state) == dict.fromkeys(_CATALOG_COLLECTIONS, 1)
     assert [ref.type for ref in client.resource_catalog()] == ["product", "product_group", "asset_unit"]
+
+
+def test_fresh_list_denial_invalidates_cached_product_and_asset_unit(service):
+    """一次新列表观察到撤权后，不在同一客户端继续显示产品或其资产单元。"""
+    client, state = service
+    state["catalog"] = catalog_routes([{"id": "p1"}, {"id": "p2"}], units=[
+        {"product_id": "p2", "asset_units": [{"id": "u2", "symbol": "单元"}]},
+    ])
+    assert client.resolve("单元", {"asset_unit"}).id == "u2"
+    state["catalog"].routes["products"][1]["permissions"] = [
+        {"product_id": "p2", "permission": "forbidden", "is_owner": False},
+    ]
+    assert client.products.list()["products"] == [{"id": "p1"}]
+    assert [ref.id for ref in client.resource_catalog()] == ["p1"]
+
+
+@pytest.mark.parametrize("newer_catalog", [False, True])
+def test_list_denial_prevents_an_inflight_rebuild_from_publishing_old_records(service, monkeypatch, newer_catalog):
+    """旧目录重建晚于撤权回包时，不向调用者或缓存交付旧产品。"""
+    client, state = service
+    rows = [{"id": "p1"}, {"id": "p2"}]
+    state["catalog"] = catalog_routes(rows)
+    loaded, resume = threading.Event(), threading.Event()
+    build = client._build_catalog_index
+
+    def build_before_denial():
+        """阻塞真正已完成 HTTP 读取的首轮，精确固定响应交错。"""
+        refs = build()
+        if not loaded.is_set():
+            loaded.set()
+            assert resume.wait(5)
+        return refs
+
+    monkeypatch.setattr(client, "_build_catalog_index", build_before_denial)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        request = pool.submit(client.resource_catalog)
+        try:
+            assert loaded.wait(5)
+            state["catalog"].routes["products"][1]["permissions"] = [
+                {"product_id": "p2", "permission": "forbidden", "is_owner": False},
+            ]
+            if newer_catalog:
+                assert [ref.id for ref in client.resource_catalog()] == ["p1"]
+            else:
+                assert client.products.list()["products"] == rows[:1]
+        finally:
+            resume.set()
+        assert [ref.id for ref in request.result()] == ["p1"]
+    assert [ref.id for ref in client.resource_catalog()] == ["p1"]
 
 
 def test_write_request_invalidates_catalog(service):
@@ -577,8 +653,8 @@ def test_catalog_expires_after_ttl(service, monkeypatch):
 
 
 @pytest.mark.parametrize("full_catalog", [False, True])
-def test_expired_details_are_revalidated_before_exposing_resources(service, monkeypatch, full_catalog):
-    """外部撤销详情读取权限后，过期目录不能继续暴露旧详情。"""
+def test_expired_index_reflects_backend_listing_removal(service, monkeypatch, full_catalog):
+    """索引过期后重新取后台集合，不继续使用后台已移除的记录。"""
     client, state = service
     real_monotonic = client_module.monotonic
     clock = {"offset": 0.0}
@@ -589,7 +665,7 @@ def test_expired_details_are_revalidated_before_exposing_resources(service, monk
         assert [ref.id for ref in client.resource_catalog()] == ["p1"]
     else:
         assert client.resolve("p1", {"product"}).name == "产品"
-    state["catalog"] = catalog_routes([product], denied=["p1"])
+    state["catalog"] = catalog_routes()
     clock["offset"] += client_module._CATALOG_TTL_SECONDS + 1
     if full_catalog:
         assert client.resource_catalog() == []
@@ -615,8 +691,8 @@ def test_expired_period_configuration_changes_realtime_balance_route(service, mo
     assert state["requests"][-1][1].split("?")[0].endswith("/asset_snapshot_summary")
 
 
-def test_index_refresh_revalidates_previously_read_details(service):
-    """新资源触发强制重建时，也应刷新既有资源详情，不能给旧配置续期。"""
+def test_index_refresh_updates_previously_read_names(service):
+    """新资源触发强制重建时，也应刷新已有索引名称，不能给旧名称续期。"""
     client, state = service
     state["catalog"] = catalog_routes([{"id": "p1", "name": "旧名"}])
     assert client.resolve("p1", {"product"}).name == "旧名"
@@ -679,28 +755,3 @@ def test_catalog_collections_are_requested_concurrently(service):
     state["hold"] = hold_on(lambda path: path in set(_CATALOG_COLLECTIONS), threading.Barrier(3, timeout=1))
     assert [ref.id for ref in client.resource_catalog()] == ["p1"]
     assert state["hold_broken"] is False
-    assert state["peak_in_flight"] <= client_module._CATALOG_CONCURRENCY
-
-
-def test_catalog_details_run_with_bounded_concurrency(service, monkeypatch):
-    """逐项详情按受控并发拉取：确实并发、不超过上限，条目顺序仍与集合顺序一致。"""
-    monkeypatch.setattr(client_module, "_CATALOG_CONCURRENCY", 4)
-    client, state = service
-    products = [{"id": f"p{index}", "name": f"产品{index}"} for index in range(12)]
-    state["catalog"] = catalog_routes(products)
-    state["hold"] = hold_on(lambda path: path.startswith("products/p"), threading.Barrier(4, timeout=1))
-    refs = client.resource_catalog()
-    assert state["hold_broken"] is False
-    assert state["peak_in_flight"] <= 4
-    assert [ref.id for ref in refs] == [f"p{index}" for index in range(12)]
-
-
-def test_catalog_detail_errors_follow_collection_order(service):
-    """并发拉详情时多个错误按集合顺序抛出第一个，同一环境下的报错可复现。"""
-    client, state = service
-    products = [{"id": f"p{index}", "name": f"产品{index}"} for index in range(5)]
-    state["catalog"] = catalog_routes(products, overrides={"p2": (500, {"message": "p2 故障"}), "p4": (500, {"message": "p4 故障"})})
-    with pytest.raises(HarnessError) as error:
-        client.resource_catalog()
-    assert error.value.code == "http_error"
-    assert "p2 故障" in str(error.value)
