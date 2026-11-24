@@ -246,7 +246,7 @@ Python 签名：`rqamsh.custom_instruments.insert_fairvalues(resource: str, data
 |---|---|---|---|---|---|
 |`[]`|新增记录 ID|string|—|本次实际新插入的通用公允价记录 ID；命中已有记录的项不计入|恒返回；提交项全部命中已有记录时为空数组，仍按本次最早日期发起重算请求|
 
-操作检查：空数组在客户端被拒绝，不会发出请求，也不会起到清空作用（清空请用 `replace_fairvalues`）。返回的 ID 数量小于提交条数说明部分记录被更新；服务端判定为重复创建时返回错误，应先用 [`balances.get`](balances.md#get) 核对该日期已有记录。本块 `get(instrument_id)` 读取的是 `customized_instruments/{id}`，只能核对自定义标的的 `fair_values`，不适用于产品级通用公允价记录，不能用它核对。写入后检查产品重算状态与受影响日期的头寸报表。
+操作检查：空数组在客户端被拒绝，不会发出请求，也不能清空产品级通用公允价；[`replace_fairvalues`](#replace_fairvalues) 只清空指定自定义标的的价格。返回的 ID 数少于提交条数表示有提交项命中了已有记录，不证明已有价格的值发生变化。本块 `get(instrument_id)` 只读自定义标的的 `fair_values`，不是本次写入的通用公允价。写入后检查产品计算状态，并用 [`balances.get`](balances.md#get) 核对受影响日期的估值结果。
 
 ```python
 result = rqamsh.custom_instruments.insert_fairvalues(

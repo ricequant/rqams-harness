@@ -206,7 +206,7 @@ Python 签名：`rqamsh.product_groups.recompute(resource: str)`。
 |---|---|---|---|---|---|
 |`submit_recompute_count`|匹配到的产品组数|integer|个|本次发起重算请求时在当前空间命中的组数|恒返回；命中单组返回 `1`，服务端未匹配到组时为 `0`|
 
-完成条件：submit_recompute_count 只表示提交数量。随后读取组头寸报表或指标并按[等待规则](connection.md)等待可用结果；若成员产品数据尚未正确估值，应先处理成员，单独重算组不能替代该步骤。
+完成条件：读取组头寸报表或指标并按[等待规则](connection.md)核对可用结果；若成员产品数据尚未正确估值，应先处理成员，单独重算组不能替代该步骤。
 
 ```python
 result = rqamsh.product_groups.recompute(resource='授权测试产品组')

@@ -93,6 +93,8 @@ rqamsh asset-units get --resource "授权测试资产单元"
 
 创建目标 resource 是产品，必须支持 trade 或混合数据源；order_book_id、symbol、start_date、bound_position 必填。当前资产单元用于收益互换底层组合，创建时应显式传 `asset_class=total_return_swap`；默认 `asset_unit` 不会命中互换绑定键。其中 `bound_position` 已废弃：不参与绑定或计算，绑定由键匹配决定，见[资产单元与收益互换持仓](#asset-unit-binding)和[资产单元字段](fields/asset_units.md#assetunit)。返回 insert_id/effect_count 并提交归属产品重算；创建成功不代表估值已完成。
 
+创建时名称、代码和起始日没有通用默认，不从当天日期或其他产品复制。已有本产品收益互换持仓可作为配置依据：代码、名称和品种取该持仓，起始日按真实业务确定；`bound_position` 可按所选状态显式传 `true`，未选择持仓时传 `false`，但它都不影响实际绑定，不应被当成“禁止绑定”开关。不要因选择了默认不绑定就省略收益互换业务必需的 `asset_class=total_return_swap`。Harness 尚无可用持仓候选查询操作，不能声称已通过它列出候选。
+
 Python 签名：`rqamsh.asset_units.create(resource: str, order_book_id: str, symbol: str, start_date: str, bound_position: bool, *, asset_class: str='asset_unit')`。
 
 |参数|类型|默认/必填|语义|
@@ -137,7 +139,7 @@ Python 签名：`rqamsh.asset_units.update(resource: str, data: dict[str, Any])`
 
 |英文字段|中文名称|JSON 类型|单位|业务含义|备注|
 |---|---|---|---|---|---|
-|`effect_count`|实际修改条数|integer|条|本次实际修改的资产单元记录数|恒返回；提交内容与现值相同时为 `0`，不代表单元不存在；见[写入结果](connection.md#write-result)|
+|`effect_count`|实际修改条数|integer|条|本次实际修改的资产单元记录数|恒返回；提交内容与现值相同时为 `0`，服务端仍从单元更新后的 `start_date` 提交归属产品重算；目标单元不存在则报错，不返回 `0`；见[写入结果](connection.md#write-result)|
 
 操作检查：只提交用户要求修改的五个业务字段中的相关字段。返回后核对 effect_count 和 get；改起点、`asset_class` 或代码时还需检查归属产品的受影响估值（改 `bound_position` 不会改变绑定结果），不能只核对单元名称。
 

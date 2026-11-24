@@ -301,7 +301,7 @@ Python 签名：`rqamsh.products.field_exists(*, name: str | None=None, full_nam
 |---|---|---|---|---|---|
 |`exists`|是否已有相同取值|boolean|—|查询时所选字段在当前工作空间内是否已有相同取值：`name`、`full_name`、`fund_code` 查顶层同名字段，`account_name` 查 `accounts.name`|恒返回；只读查询不预留取值。名称、账户名称、基金代码受唯一约束，全称 `full_name` 不受唯一约束|
 
-结果检查：exists=true 表示该字段已被占用，应另选取值；exists=false 不保证随后创建一定成功，创建仍需处理冲突。
+结果检查：`exists=true` 表示已有相同取值；对名称、账户名称、基金代码须更换或核实已有对象，`full_name` 可按业务需要重复使用。`exists=false` 仅表示查询时未找到。查询与创建是两个请求，期间并发写入可改变占用状态；应检查后续创建的真实结果，遇唯一约束冲突重新核对目标，不把查重当作预留成功。
 
 ```python
 result = rqamsh.products.field_exists(fund_code='000001')
