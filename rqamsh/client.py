@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from contextlib import ExitStack, contextmanager
+from contextvars import copy_context
 from pathlib import Path
 from threading import Lock
 from time import monotonic, sleep
@@ -14,7 +15,7 @@ import requests
 
 from .errors import HarnessError
 from .settings import load_settings, remember_workspace, settings_path as default_settings_path
-from .transport import DeadlineAdapter, request_deadline
+from .transport import DeadlineAdapter, cap_request_deadline, request_deadline
 
 
 # 资源目录的复用窗口：同一客户端在这段时间内不重复列举产品、产品组与资产单元。
@@ -316,7 +317,7 @@ class Client:
         url = (base or self.base_url) + "/" + path
         method = method.upper()
         query = self._params(params)
-        deadline = monotonic() + self.wait_timeout
+        deadline = cap_request_deadline(monotonic() + self.wait_timeout)
         task_id = None
         payload = None
         original_method = method
@@ -475,7 +476,7 @@ class Client:
         product_ids = set()
         with ThreadPoolExecutor(max_workers=3) as pool:
             listings = {
-                path: pool.submit(self.call, "GET", path)
+                path: pool.submit(copy_context().run, self.call, "GET", path)
                 for path in ("products", "product_groups", "products/asset_units")
             }
             for collection, kind, permission_key in (

@@ -12,6 +12,8 @@ import pytest
 
 from test_client import catalog_routes, service
 from rqamsh.errors import HarnessError
+from rqamsh.resources import balances as balance_module
+from rqamsh.transport import cap_request_deadline
 
 DEMO = Path(__file__).resolve().parents[1] / "docs" / "demo"
 SPEC = importlib.util.spec_from_file_location("scale_case_wait", DEMO / "live-product-scale" / "run.py")
@@ -26,16 +28,14 @@ finally:
 class ScaleContext:
     """隔离案例业务编排，真实 SDK 的协议另用本机 HTTP 烟测验证。"""
 
-    def __init__(self, single_error=None, batch_error=False, remaining=80):
-        """准备一只已就绪和一只缺项产品，并记录对外可见的业务结果。"""
+    def __init__(self, batch_error=False, remaining=80):
+        """准备一只已就绪和一只缺项产品。"""
         self.args = SimpleNamespace(deadline=90, include_settled_reference=False)
         self.data = {"sections": {}, "problems": []}
         self.batches = 0
-        self.single_reads = []
         self.remaining_seconds = remaining
-        self.single_error = single_error
         self.batch_error = batch_error
-        self.client = SimpleNamespace(timeout=30, wait_timeout=300, _resources={}, _resource_detail_cache={})
+        self.client = SimpleNamespace(timeout=30, wait_timeout=300, _resources={})
         self.client.products = SimpleNamespace(list=self.products, compute_state=self.compute_state)
         self.client.balances = SimpleNamespace(get=self.balances)
         self.client.market_data = SimpleNamespace(trading_dates=self.trading_dates)
@@ -80,41 +80,30 @@ class ScaleContext:
                 "update_time": "2026-11-09 14:00:00"}
 
     def balances(self, resource, **kwargs):
-        """首轮缺项，后续批量可返回全量，用于捕获不允许的重新等待。"""
-        if isinstance(resource, list):
-            self.batches += 1
-            if self.batches > 1:
-                return {identifier: self.snapshot(100) for identifier in resource}
-            result = {"ready": self.snapshot(100)}
-            if self.batch_error:
-                result["error_messages"] = {"pending": "估值输入缺失"}
-            else:
-                result["pending_valuation"] = ["pending"]
-            return result
-        self.single_reads.append(resource)
-        if self.single_error:
-            raise self.single_error
-        return self.snapshot(200)
+        """返回 SDK 最终截面；不接受额外的单读或批量重查。"""
+        assert resource == ["ready", "pending"]
+        self.batches += 1
+        assert self.batches == 1
+        message = "估值输入缺失" if self.batch_error else "本次等待时限内未获取到实时头寸"
+        result = {"ready": self.snapshot(100), "error_messages": {"pending": message},
+                  "pending_valuation": []}
+        if not self.batch_error:
+            result['batch_wait'] = {'timed_out_ids': ['pending'], 'message': message}
+        return result
 
 
-@pytest.fixture(autouse=True)
-def no_retry_sleep(monkeypatch):
-    """只加速旧编排外层 sleep，不改变 SDK 协议或调用结局。"""
-    monkeypatch.setattr(SCALE, "time", SimpleNamespace(monotonic=time.monotonic, sleep=lambda _: None))
-
-
-def test_summary_timeout_preserves_partial_and_diagnostics():
-    """单读已超时不能再批量重试变成全量，且必须交付错误详情。"""
-    details = {"task_id": "original-task", "response": {"message": "snapshot pending"}}
-    ctx = ScaleContext(HarnessError("wait_timeout", "等待超时", details=details))
+def test_batch_timeout_preserves_partial_and_diagnostics():
+    """SDK 截止诊断不计为后台错误，报告给出缺口与状态证据。"""
+    ctx = ScaleContext()
     SCALE.collect(ctx)
     sections = ctx.data["sections"]
     assert sections["coverage"]["ready"] == 1
     assert sections["totals"]["equity_sum"] is None
     row = next(row for row in sections["rows"] if row["id"] == "pending")
     assert row["status"] == "pending"
-    assert row["detail"]["single_read"]["error"]["details"] == details
-    assert row["detail"]["single_read"]["seconds"] >= 0
+    assert sections["coverage"]["error"] == 0
+    assert row["detail"]["compute_state"]["response"]["execution_id"] == "execution-original"
+    assert "本次等待时限内未获取到实时头寸" in SCALE.render(ctx.data)
     assert row["detail"]["next_steps"]
     assert ctx.batches == 1
 
@@ -127,30 +116,40 @@ def test_batch_explicit_failure_cannot_be_overwritten_by_single_success():
     assert sections["coverage"]["ready"] == 1
     assert sections["coverage"]["error"] == 1
     assert sections["totals"]["equity_sum"] is None
-    assert "pending" not in ctx.single_reads
+    row = next(row for row in sections["rows"] if row["id"] == "pending")
+    assert row["detail"]["error"] == "估值输入缺失"
 
 
-def test_single_summary_success_merges_same_day_amounts():
-    """后续单读成功可补入同日小计，不覆盖首轮已取得值。"""
+def test_server_error_with_timeout_text_is_not_an_sdk_timeout(service, monkeypatch):
+    """文案相同的逐项错误与 SDK 截止缺项按来源区分。"""
     ctx = ScaleContext()
+    client, state = service
+    ctx.client.balances = client.balances
+    client.wait_timeout = 1
+    state["catalog"] = catalog_routes([{"id": i} for i in ("ready", "pending")])
+    message = "本次等待时限内未获取到实时头寸"
+    state["responses"] = [(200, {"error_messages": {"ready": message}})]
+    monkeypatch.setattr(balance_module, "sleep", lambda _: None)
+    SCALE.collect(ctx)
+    rows = {row["id"]: row for row in ctx.data["sections"]["rows"]}
+    assert rows["ready"]["status"] == "error"
+    assert rows["pending"]["status"] == "pending"
+
+
+def test_report_totals_use_one_sdk_batch_round(service, monkeypatch):
+    """走真实 SDK 和 HTTP，首轮的 100 元不能混进最终报告。"""
+    ctx = ScaleContext()
+    client, state = service
+    ctx.client.balances = client.balances
+    state["catalog"] = catalog_routes([{"id": i, "name": i} for i in ("ready", "pending")])
+    state["responses"] = [(200, {"ready": ctx.snapshot(100)}),
+                          (200, {"ready": ctx.snapshot(120), "pending": ctx.snapshot(200)})]
+    monkeypatch.setattr(balance_module, "sleep", lambda _: None)
     SCALE.collect(ctx)
     sections = ctx.data["sections"]
     assert sections["coverage"]["complete"]
-    assert sections["totals"]["equity_sum"] == 300
-    assert sections["coverage"]["batch_rows"] == 1
-    assert sections["coverage"]["single_rows"] == 1
-
-
-def test_insufficient_budget_is_not_a_product_failure():
-    """剩余预算不足跳过单读，应报告未充分等待，而非产品失败。"""
-    ctx = ScaleContext(remaining=1)
-    SCALE.collect(ctx)
-    row = next(row for row in ctx.data["sections"]["rows"] if row["id"] == "pending")
-    assert row["status"] == "pending"
-    assert row["detail"]["single_read"]["skipped"]
-    assert row["detail"]["next_steps"]
-    assert not ctx.single_reads
-    assert ctx.batches == 1
+    assert sections["totals"]["equity_sum"] == 320
+    assert [request[0] for request in state["requests"] if request[1].endswith("asset_snapshot_summary")] == ["POST", "POST"]
 
 
 def test_queued_query_does_not_restart_exhausted_budget(service):
@@ -178,7 +177,7 @@ def test_queued_query_does_not_restart_exhausted_budget(service):
         second = pool.submit(SCALE._probe, ctx, query)
         try:
             assert entered.wait(5)
-            ctx.remaining_seconds = SCALE.DIAGNOSIS_RESERVE
+            ctx.remaining_seconds = 0
         finally:
             release.set()
         assert first.result()['response']['id'] == 'p1'
@@ -187,39 +186,80 @@ def test_queued_query_does_not_restart_exhausted_budget(service):
     assert client.call('GET', 'products/p1')['id'] == 'p1'
 
 
-def test_sdk_summary_202_then_success_preserves_result(service):
-    """真实 SDK 内部处理 202，成功产物保留业务日期与净资产。"""
-    client, state = service
-    state['catalog'] = catalog_routes(products=[{'id': 'p1', 'name': 'p1'}])
-    state['responses'] = [(202, {'message': '实时产物准备中'}), (200, {
-        'date': '2026-11-09', 'total_equity': 250, 'update_time': '2026-11-09 15:00:00'})]
-    ctx = ScaleContext()
-    ctx.client = client
-    result = SCALE._probe(ctx, lambda bounded: {'values': bounded.balances.get('p1', fields=list(SCALE.FIELDS))})
-    assert result['values']['date'] == '2026-11-09'
-    assert result['values']['total_equity'] == 250
-    assert client.call('GET', 'products/p1')['id'] == 'p1'
+def test_batch_wait_leaves_budget_for_requested_settled_reference(monkeypatch):
+    """批量耗尽分配预算后，仍读取独立结算参考，不用参考金额补实时。"""
+    ctx = ScaleContext(remaining=170)
+    ctx.args.include_settled_reference = True
+    clock = [100.0]
+    monkeypatch.setattr(SCALE, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    ctx.remaining = lambda: max(0.0, 270 - clock[0])
+
+    def wait_for_batch(resource, **kwargs):
+        """模拟批量 SDK 等到分配的截止后交付部分截面。"""
+        clock[0] = cap_request_deadline(270)
+        assert clock[0] - 100 >= 120  # 诊断预算不能重复占用批量等待时间。
+        return ctx.balances(resource, **kwargs)
+
+    def reference(resource):
+        """模拟得到两个产品的上一交易日参考。"""
+        return {identifier: ctx.snapshot(200) for identifier in resource}
+
+    def status(_):
+        """模拟最后一项计算状态查询耗尽诊断预算。"""
+        clock[0] = cap_request_deadline(270)
+        raise HarnessError('wait_timeout', '状态查询未完成')
+
+    ctx.client.balances = SimpleNamespace(get=wait_for_batch, previous_summaries=reference)
+    ctx.client.products.compute_state = status
+    SCALE.collect(ctx)
+    sections = ctx.data['sections']
+    assert len(sections['settled_reference']['rows']) == 2
+    assert sections['coverage']['ready'] == 1
+    assert sections['totals']['equity_sum'] is None
+    assert ctx.remaining() > 0
 
 
-def test_sdk_resource_resolution_and_summary_share_one_deadline(service, monkeypatch):
-    """资源解析耗时计入同一次等待，不能在业务调用时重新获得预算。"""
+def test_optional_settled_reference_preserves_short_realtime_budget(monkeypatch):
+    """短预算下先完成实时读取，不能因勾选结算参考而失去首轮截面。"""
+    ctx = ScaleContext(remaining=17)
+    ctx.args.include_settled_reference = True
+    monkeypatch.setattr(SCALE.time, 'monotonic', lambda: 100.0)
+
+    def read_batch(resource, **kwargs):
+        """把至少一秒的首轮读取视为完成，并保留批次级任务诊断。"""
+        assert cap_request_deadline(117.0) >= 101.0
+        result = ctx.balances(resource, **kwargs)
+        result['batch_wait']['task_id'] = 'round2'
+        return result
+
+    ctx.client.balances.get = read_batch
+    ctx.remaining = lambda: 17.0 if not ctx.batches else 9.0
+    SCALE.collect(ctx)
+    assert ctx.data['sections']['coverage']['ready'] == 1
+    assert 'round2' in SCALE.render(ctx.data)
+
+
+def test_sdk_resource_resolution_and_batch_share_one_deadline(service, monkeypatch):
+    """批量解析耗尽预算后不能另起业务请求或改变客户端配置。"""
+    from rqamsh import client as client_module
+
     client, state = service
     state['catalog'] = catalog_routes(products=[{'id': 'p1', 'name': 'p1'}])
     original_timeout = client.wait_timeout
     clock = [time.monotonic()]
-    monkeypatch.setattr(SCALE.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(balance_module, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(client_module, 'monotonic', lambda: clock[0])
 
-    def slow_detail(path):
+    def slow_listing(path):
         """解析阶段推进本项时钟，确定性耗尽预算而不依赖网络超时竞态。"""
-        if path == 'products/p1':
+        if path == 'products':
             clock[0] += 20
 
-    state['hold'] = slow_detail
+    state['hold'] = slow_listing
     state['responses'] = [(200, {'date': '2026-11-09', 'total_equity': 250})]
-    ctx = ScaleContext(remaining=SCALE.DIAGNOSIS_RESERVE + 10)
-    ctx.client = client
-    result = SCALE._probe(ctx, lambda bounded: {'values': bounded.balances.get('p1', fields=list(SCALE.FIELDS))})
-    assert result['error']['code'] == 'wait_timeout'
+    with SCALE.request_deadline(clock[0] + 10), pytest.raises(HarnessError) as error:
+        client.balances.get(['p1'], fields=list(SCALE.FIELDS))
+    assert error.value.code == 'wait_timeout'
     assert not any('/asset_snapshot_summary' in request[1] for request in state['requests'])
     assert client.wait_timeout == original_timeout
 
@@ -229,14 +269,15 @@ def test_sdk_resource_resolution_and_summary_share_one_deadline(service, monkeyp
     {'date': '2026-11-09', 'total_equity': None},
     {'date': '2026-11-09', 'total_equity': float('nan')},
 ])
-def test_single_summary_incomplete_200_never_becomes_complete(payload):
+def test_batch_incomplete_200_never_becomes_complete(payload):
     """200 但缺日期或金额时交付缺口，不补值或继续外层重试。"""
     ctx = ScaleContext()
-    original = ctx.balances
 
     def incomplete(resource, **kwargs):
-        """批量保持正常响应，单读保留缺失值。"""
-        return original(resource, **kwargs) if isinstance(resource, list) else payload
+        """第二只已返回但字段不足，不能标为就绪或续查。"""
+        assert resource == ["ready", "pending"]
+        ctx.batches += 1
+        return {"ready": ctx.snapshot(100), "pending": payload}
 
     ctx.client.balances.get = incomplete
     SCALE.collect(ctx)
@@ -245,15 +286,20 @@ def test_single_summary_incomplete_200_never_becomes_complete(payload):
     assert ctx.batches == 1
 
 
-def test_network_failure_and_summary_diagnostics_reach_report():
-    """连接失败不归因产品计算，交付报告必须包含原因与排查路径。"""
-    ctx = ScaleContext(HarnessError('transport_error', 'connection reset', details={'response': None}))
+def test_network_failure_during_status_diagnosis_reaches_report():
+    """状态补查失败不把实时缺项改成产品失败，报告保留原因。"""
+    ctx = ScaleContext()
+
+    def broken_status(_):
+        """模拟状态查询连接断开。"""
+        raise HarnessError('transport_error', 'connection reset')
+
+    ctx.client.products.compute_state = broken_status
     SCALE.collect(ctx)
     row = next(row for row in ctx.data['sections']['rows'] if row['id'] == 'pending')
     assert row['status'] == 'pending'
-    assert '网络' in row['detail']['next_steps'][0]
     report = SCALE.render(ctx.data)
     assert 'connection reset' in report
-    assert 'transport_error' in report
+    assert row['detail']['compute_state']['error']['code'] == 'transport_error'
     assert '## 排查方案' in report
     assert ctx.batches == 1

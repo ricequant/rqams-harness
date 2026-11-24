@@ -12,10 +12,16 @@ from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 _deadline = ContextVar("rqamsh_request_deadline", default=None)
 
 
+def cap_request_deadline(value):
+    """将单次请求的截止时间限制在外层读取预算之内。"""
+    current = _deadline.get()
+    return min(current, value) if current is not None else value
+
+
 @contextmanager
 def request_deadline(value):
     """将截止时间限制在当前调用上下文，异常也恢复旧值。"""
-    token = _deadline.set(value)
+    token = _deadline.set(cap_request_deadline(value))
     try:
         yield
     finally:

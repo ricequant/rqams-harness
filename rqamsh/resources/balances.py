@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date as Date, datetime, timedelta, timezone
+from time import monotonic, sleep
 from typing import Any
 
 from rqamsh.errors import HarnessError
+from rqamsh.transport import cap_request_deadline, request_deadline
 from ._base import _Resource, _nonempty, _text
 
 
@@ -19,7 +21,11 @@ def _flat_position(classifier: str | None) -> bool:
 
 
 # 批量实时概览与成员视图的诊断键，投影时原样保留。
-_DIAGNOSTIC_KEYS = frozenset({"error_messages", "pending_valuation"})
+_DIAGNOSTIC_KEYS = frozenset({"error_messages", "pending_valuation", "batch_wait"})
+_BATCH_WAIT_SECONDS = 180
+_BATCH_REFRESH_SECONDS = 5
+_BATCH_TIMEOUT = "3分钟内未获取到实时头寸"
+_BATCH_SHORT_TIMEOUT = "本次等待时限内未获取到实时头寸"
 
 # 这些字段直接存储在头寸报表中，不需要分类、穿透或额外指标计算。
 _SUMMARY_FIELDS = frozenset({
@@ -60,14 +66,14 @@ def _select_fields(result: Any, fields: list[str] | None, members: bool) -> Any:
         return result | {"data": _select_fields(result["data"], fields, members)}
     if members:
         # 成员缺失时不得回填权重：服务端可能返回不完整成员集合，权重会被误读。
-        pending = result.get("pending_valuation") or []
+        incomplete = result.get("pending_valuation") or result.get("error_messages")
         projected = {}
         for key, value in result.items():
             if key in _DIAGNOSTIC_KEYS:
                 projected[key] = value
                 continue
             member = _select_fields(value, fields, False)
-            if "product_weight" in value and not pending:
+            if "product_weight" in value and not incomplete:
                 member["product_weight"] = value["product_weight"]
             projected[key] = member
         return projected
@@ -88,7 +94,10 @@ class Balances(_Resource):
         Args:
             resource_or_resources: 产品或产品组唯一 ID 或名称；传入数组时按批量实时
                 概览查询多个资源，返回资源 ID 到概览的映射，并附带 pending_valuation
-                与 error_messages。批量形态不支持 date、classifier、benchmark_id、
+                与 error_messages。缺项时原集合原字段续查，等待最多 180 秒且不超过
+                wait_timeout；只返回最后一轮收到的截面，截止缺项放入 error_messages，
+                对应 ID 与已知续查任务信息放在 batch_wait 中。整批 403 不拆批、不重试。
+                批量形态不支持 date、classifier、benchmark_id、
                 drilldown=False、关闭期货冲销项或成员权重视图，传入即报错而非忽略。
             date: YYYY-MM-DD；省略或北京时间当天取实时，过去日期取历史，未来拒绝。
             fields: 非空顶层返回字段列表；省略返回完整报表及持仓，不接受嵌套路径。
@@ -99,7 +108,7 @@ class Balances(_Resource):
                 历史自定义基准仅支持顶层收益字段，不支持同时返回持仓。
             drilldown: 是否穿透，默认 True；历史查询不支持 False。
             include_component_weight_view: 实时产品组成员视图，保留成员 ID、权重及错误；
-                存在 pending_valuation 时不返回成员权重。
+                存在 pending_valuation 或 error_messages 时不返回成员权重。
         Returns:
             完整报表或所选顶层字段；成员视图与批量查询为 ID 到报表的映射。
             保留服务端返回的业务日期、null、缺字段与任务包装，不把缺失补成零。
@@ -172,6 +181,13 @@ class Balances(_Resource):
                 "classifier": classifier, "flat_position": flat_position,
                 "show_futures_sterilisation": show_futures_sterilisation, "benchmark_id": benchmark_id,
             }
+        members = None
+        if include_component_weight_view:
+            # 成员组成可能在索引缓存后发生变化；只在成员视图中读取当前配置。
+            configuration = self._client.call("GET", ref.path)
+            if not isinstance(configuration, dict) or not isinstance(configuration.get("product_ids"), list):
+                raise HarnessError("invalid_response", "产品组配置缺少完整 product_ids，无法核对成员缺项", details=configuration)
+            members = configuration["product_ids"]
         result = self._client.call("GET", f"{ref.path}/{endpoint}", params=params)
         if not realtime and isinstance(result, dict):
             document = result.get("data") if result.get("status") in {"SUCCESS", "success"} else result
@@ -181,8 +197,8 @@ class Balances(_Resource):
                     "historical_date_mismatch", "服务端未返回指定历史日头寸，不能用实时或其他日期结果替代",
                     details={"requested_date": query_date, "actual_date": actual_date, "response": result},
                 )
-        if include_component_weight_view and isinstance(result, dict):
-            self._mark_pending(result, ref.data.get("products") or [])
+        if members is not None and isinstance(result, dict):
+            self._mark_pending(result, members, member_view=True)
         return _select_fields(result, fields, include_component_weight_view)
 
     def series(
@@ -337,28 +353,90 @@ class Balances(_Resource):
             _nonempty(fields, "fields")
             if any(not isinstance(field, str) or not field.isidentifier() for field in fields):
                 raise HarnessError("invalid_argument", "fields 仅接受顶层字段名；持仓使用 positions，不使用 positions.quantity")
-        refs = self._batch_refs(resources, {"product", "product_group"})
-        body = {"product_or_group_ids": [ref.id for ref in refs]}
-        if fields is not None:
-            body["fields"] = fields
-        result = self._client.call("POST", "asset_snapshot_summary", json=body)
-        if not isinstance(result, dict):
-            raise HarnessError("invalid_response", "批量实时概览应返回 JSON 对象", details=result)
-        self._mark_pending(result, [ref.id for ref in refs])
-        return result
+            fields = list(fields)
+        started = monotonic()
+        full_deadline = started + _BATCH_WAIT_SECONDS
+        deadline = cap_request_deadline(min(full_deadline, started + self._client.wait_timeout))
+        timeout_message = _BATCH_TIMEOUT if deadline == full_deadline else _BATCH_SHORT_TIMEOUT
+        with request_deadline(deadline):
+            refs = self._batch_refs(resources, {"product", "product_group"})
+            identifiers = [ref.id for ref in refs]
+            body = {"product_or_group_ids": identifiers}
+            if fields is not None:
+                body["fields"] = fields
+            return self._wait_batch_snapshot(body, identifiers, deadline, timeout_message)
 
-    def _mark_pending(self, result: dict, members: list) -> None:
+    def _wait_batch_snapshot(self, body, identifiers, deadline, timeout_message):
+        """仅保留最新一轮的数值；错误记录不回填数值，也不覆盖后来已返回的项。"""
+        latest = None
+        errors = {}
+        wait = None
+        interval = max(_BATCH_REFRESH_SECONDS, self._client.poll_interval)
+        while True:
+            try:
+                result = self._client.call("POST", "asset_snapshot_summary", json=body)
+            except HarnessError as exc:
+                if latest is None or exc.code != "wait_timeout":
+                    raise
+                details = exc.details or {}
+                wait = {
+                    "message": str(exc), "task_id": details.get("task_id"), "response": details.get("response"),
+                }
+                break
+            if not isinstance(result, dict):
+                raise HarnessError("invalid_response", "批量实时概览应返回 JSON 对象", details=result)
+            # 成功任务包装仍原样保留，仅标注 data 里的资源映射。
+            payload = result.get("data") if result.get("status") in {"SUCCESS", "success"} else None
+            if not isinstance(payload, dict):
+                payload = result
+            server_errors = payload.get("error_messages") or {}
+            errors.update(server_errors)
+            for identifier in identifiers:
+                if identifier in payload and identifier not in server_errors:
+                    errors.pop(identifier, None)
+            missing = [identifier for identifier in identifiers
+                       if identifier not in payload and identifier not in errors]
+            latest = result
+            if not missing:
+                break
+            remaining = deadline - monotonic()
+            if remaining <= interval:
+                if remaining > 0:
+                    sleep(remaining)
+                break
+            sleep(interval)
+            if monotonic() >= deadline:
+                break
+        errors.update(dict.fromkeys(missing, timeout_message))
+        if missing:
+            if wait is None:
+                wait = {"message": timeout_message, "task_id": None, "response": None}
+            wait["timed_out_ids"] = missing
+            payload["batch_wait"] = wait
+        payload["error_messages"] = errors
+        payload["pending_valuation"] = []
+        return latest
+
+    def _mark_pending(self, result: dict, members: list, *, member_view: bool = False) -> None:
         """显式标注未就绪项：缺失项可能已被服务端触发补算，但不回填任何值。
 
-        产品组成员在产品组详情里是完整文档，这里统一取 ID；服务端响应本身不含
-        `pending_valuation`，该键完全由 Harness 依据「请求的成员未出现在结果中」推导。
+        组成员以配置的 product_ids 为准，不以可能残缺的 products 摘要判断完整性。
+        服务端不返回 pending_valuation；该键由请求成员与实际结果的差集推导。
+        成员视图存在失败或缺项时移除全部成员权重，避免残缺权重被当作完整分配。
         """
+        if result.get("status") in {"SUCCESS", "success"} and isinstance(result.get("data"), dict):
+            self._mark_pending(result["data"], members, member_view=member_view)
+            return
         errors = result.get("error_messages") or {}
         result["error_messages"] = errors
         result["pending_valuation"] = [
             member_id for member_id in (self._member_id(member) for member in members)
             if member_id and member_id not in result and member_id not in errors
         ]
+        if member_view and (errors or result["pending_valuation"]):
+            for key, value in result.items():
+                if key not in _DIAGNOSTIC_KEYS and isinstance(value, dict):
+                    value.pop("product_weight", None)
 
     @staticmethod
     def _member_id(member: Any) -> str | None:

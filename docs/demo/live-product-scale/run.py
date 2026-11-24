@@ -10,7 +10,6 @@ from __future__ import annotations
 import math
 import sys
 import time
-from copy import copy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _report_common import launch  # noqa: E402
 from rqamsh.errors import HarnessError  # noqa: E402
+from rqamsh.transport import request_deadline  # noqa: E402
 
 BEIJING = timezone(timedelta(hours=8))
 FIELDS = ['date', 'total_equity', 'total_assets', 'total_liabilities', 'update_time']
@@ -26,13 +26,14 @@ AMOUNT_FIELDS = frozenset({'total_equity', 'total_assets', 'total_liabilities'})
 TOLERANCE = 0.01
 CALENDAR_DAYS = 14
 DIAGNOSIS_RESERVE = 30.0
-SETTLED_RESERVE = 45.0
+SETTLED_RESERVE = 15.0
+PUBLISH_RESERVE = 1.0
 MISSING = object()
 
 STATUS_TEXT = {'ok': '就绪', 'missing_fields': '缺字段', 'error': '明确错误',
                'pending': '截止时未就绪', 'batch_failed': '批量失败',
                'unreconciled': '对账不一致'}
-SOURCE_TEXT = {'batch': '批量截面', 'single_read': '单读回收'}
+SOURCE_TEXT = {'batch': '批量截面'}
 STATE_TEXT = {'complete': '完整（全部请求的实盘产品都有可用业务日期与有限净资产）',
               'partial': '部分（已取得结果按原样保留，缺口逐项列明）',
               'failed': '失败（采集未完成，缺口见文末）',
@@ -84,9 +85,20 @@ def _extract(document):
 
 
 def _batch(ctx, sections, state, identifiers, label):
-    """提交一轮批量实时截面，吸收返回并把请求差集记入证据。"""
+    """调用一次 SDK 批量查询，核对其最终截面和逐项诊断。"""
     started = time.monotonic()
-    result = ctx.call(label, lambda: ctx.client.balances.get(list(identifiers), fields=list(FIELDS)))
+
+    def read_batch():
+        """批量续查共享整条命令的剩余预算，给诊断留出时间。"""
+        remaining = ctx.remaining() - PUBLISH_RESERVE
+        reserve = DIAGNOSIS_RESERVE
+        if getattr(ctx.args, 'include_settled_reference', False):
+            reserve += SETTLED_RESERVE
+        budget = max(remaining - reserve, remaining / 2, 0)
+        with request_deadline(time.monotonic() + budget):
+            return ctx.client.balances.get(identifiers, fields=FIELDS)
+
+    result = ctx.call(label, read_batch)
     record = {'label': label, 'requested': len(identifiers), 'error': None, 'returned': [],
               'errors': {}, 'pending': [], 'unaccounted': [], 'anomalies': [],
               'consistent': False, 'seconds': round(time.monotonic() - started, 3)}
@@ -94,12 +106,20 @@ def _batch(ctx, sections, state, identifiers, label):
     if not isinstance(result, dict):
         record['error'] = '批量截面未返回资源映射'
         return record
-    returned = [str(key) for key in result if key not in {'error_messages', 'pending_valuation'}]
+    if result.get('status') in ('SUCCESS', 'success') and isinstance(result.get('data'), dict):
+        result = result['data']
+    if isinstance(result.get('batch_wait'), dict):
+        record['batch_wait'] = result['batch_wait']
+    returned = [str(key) for key in result if key not in {'error_messages', 'pending_valuation', 'batch_wait'}]
     raw_errors = result.get('error_messages')
     errors = {str(key): _clip(value) for key, value in raw_errors.items()} \
         if isinstance(raw_errors, dict) else {}
     raw_pending = result.get('pending_valuation')
     pending = [str(item) for item in raw_pending] if isinstance(raw_pending, list) else []
+    for identifier in (record.get('batch_wait') or {}).get('timed_out_ids', []):
+        if identifier in errors:
+            pending.append(identifier)
+            state['detail'][identifier] = {'outcome': errors.pop(identifier)}
     requested = [str(item) for item in identifiers]
     requested_set = set(requested)
     unaccounted = [item for item in requested
@@ -133,8 +153,7 @@ def _batch(ctx, sections, state, identifiers, label):
     for identifier, message in errors.items():
         if identifier in requested_set and identifier not in state['values']:
             state['errors'][identifier] = message
-    state['pending'] = [item for item in identifiers
-                        if item not in state['values'] and item not in state['errors']]
+    state['pending'] = pending
     return record
 
 
@@ -186,33 +205,16 @@ def _latest_day(ctx, sections, today):
 
 
 def _probe(ctx, call):
-    """按启动时剩余预算等待一次，隔离超时配置并保留原始诊断。"""
-    budget = min(ctx.client.wait_timeout, max(0.0, ctx.remaining() - DIAGNOSIS_RESERVE))
-    if not budget:
+    """计算状态查询共享报告截止时间，不改动客户端配置。"""
+    budget = ctx.remaining() - PUBLISH_RESERVE
+    if budget <= 0:
         return {'skipped': '剩余预算不足，未执行本次查询',
                 'seconds': 0.0, 'wait_budget_seconds': 0.0}
-    client = copy(ctx.client)
-    client._resources = {}
-    client._resource_detail_cache = dict(ctx.client._resource_detail_cache)
-    client.timeout = min(ctx.client.timeout, budget)
-    client.wait_timeout = budget
     started = time.monotonic()
-    deadline = started + budget
-
-    def bounded_call(method, path, **kwargs):
-        """资源解析与结果查询共享截止，不为每个底层调用重置预算。"""
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise HarnessError('wait_timeout', '本次单产品查询等待预算已耗尽')
-        request_client = copy(client)
-        request_client.wait_timeout = min(budget, remaining)
-        request_client.timeout = min(ctx.client.timeout, remaining)
-        return type(client).call(request_client, method, path, **kwargs)
-
-    client.call = bounded_call
     try:
-        result = call(client)
-    except Exception as exc:
+        with request_deadline(started + budget):
+            result = call(ctx.client)
+    except HarnessError as exc:
         result = {'error': {'message': _clip(str(exc)),
                             'code': getattr(exc, 'code', None),
                             'status': getattr(exc, 'status', None),
@@ -222,58 +224,20 @@ def _probe(ctx, call):
     return result
 
 
-def _diagnose(ctx, targets, state, identifiers):
-    """缺项只做一次单产品自动等待和状态查询，结束后保留结果与诊断。"""
-    jobs = {}
-    for identifier in targets:
-        jobs[f'state:{identifier}'] = (
-            lambda item=identifier: _probe(
-                ctx, lambda client: {'response': client.products.compute_state(item)}))
-        jobs[f'read:{identifier}'] = (
-            lambda item=identifier: _probe(
-                ctx, lambda client: {'values': _extract(
-                    client.balances.get(item, fields=list(FIELDS)))[0]}))
-    results = ctx.parallel(jobs)
-    for identifier in targets:
-        detail = {'compute_state': results.get(f'state:{identifier}'),
-                  'single_read': results.get(f'read:{identifier}')}
-        if identifier in state['errors']:
-            detail['batch_error'] = state['errors'][identifier]
-        single = detail['single_read']
-        values = single.get('values') if isinstance(single, dict) else None
-        error = single.get('error') if isinstance(single, dict) else None
-        if isinstance(values, dict):
-            state['values'][identifier] = values
-            state['missing'][identifier] = [key for key in FIELDS if key not in values]
-            state['source'][identifier] = 'single_read'
-            date = values.get('date')
-            ready = isinstance(date, str) and bool(date.strip()) and _finite(values.get('total_equity'))
-            detail['outcome'] = ('单产品同口径读取取得可用业务日期与有限净资产' if ready
-                                 else '单产品已返回，但缺可用业务日期或有限净资产，停止重复查询')
-        elif isinstance(error, dict):
-            detail['outcome'] = _clip(error.get('message'))
-            # 超时和连接失败仅结束本次采集，不认定服务端计算失败，也不再外层重试。
-            if error.get('code') not in ('transport_error', 'wait_timeout'):
-                state['errors'][identifier] = _clip(error.get('message'))
-        elif isinstance(single, dict):
-            detail['outcome'] = _clip(single.get('skipped') or '未取得结果')
-        state['detail'][identifier] = detail
-    state['pending'] = [item for item in identifiers
-                        if item not in state['values'] and item not in state['errors']]
+def _diagnose(ctx, targets, state):
+    """仅查缺项的计算状态，不用单产品金额回填批量截面。"""
+    jobs = {identifier: lambda item=identifier: _probe(
+        ctx, lambda client: {'response': client.products.compute_state(item)}) for identifier in targets}
+    for identifier, diagnosis in ctx.parallel(jobs).items():
+        state['detail'].setdefault(identifier, {})['compute_state'] = diagnosis
 
 
 def _next_steps(status, detail):
     """根据实际停止原因给出只读排查路径，不推断故障根因或自动重算。"""
     if status == 'ok':
         return []
-    single = detail.get('single_read') or {}
-    error = single.get('error') or {}
     compute = (detail.get('compute_state') or {}).get('response')
     compute = compute if isinstance(compute, dict) else {}
-    if single.get('skipped'):
-        return ['本次剩余预算不足，未充分等待；重新查询同一产品实时结果，不能据此认定产品异常。']
-    if error.get('code') == 'transport_error':
-        return ['先核对目标部署的网络连通性与错误详情；连接失败不能认定产品计算异常。']
     if status == 'batch_failed':
         return ['保留批量错误原文，按其提示核对连接、权限或请求；本次不拆成逐只查询碰运气。']
     if status == 'missing_fields':
@@ -354,10 +318,6 @@ def _aggregate(identifiers, rows, latest):
                        'note': '；'.join(notes) or None})
     ready = sum(1 for row in rows if row['status'] == 'ok')
     coverage = {'requested': len(identifiers), 'ready': ready,
-                'batch_rows': sum(1 for row in rows
-                                  if row['status'] == 'ok' and row['source'] == 'batch'),
-                'single_rows': sum(1 for row in rows
-                                   if row['status'] == 'ok' and row['source'] == 'single_read'),
                 'complete': bool(identifiers) and ready == len(identifiers)}
     for status in ('error', 'pending', 'batch_failed', 'missing_fields', 'unreconciled'):
         coverage[status] = sum(1 for row in rows if row['status'] == status)
@@ -390,8 +350,7 @@ def _summary(sections):
     items = [f"范围：可见 {universe.get('visible_total', '未返回')} 只产品中 label=live "
              f"{universe.get('live_count', requested)} 只，按产品 ID 去重后全部纳入，"
              '未按封账、到期、零值或负值筛选。',
-             f"就绪 {coverage['ready']}/{requested}（批量 {coverage['batch_rows']}、"
-             f"单读回收 {coverage['single_rows']}）；明确错误 {coverage['error']}、"
+             f"就绪 {coverage['ready']}/{requested}；明确错误 {coverage['error']}、"
              f"截止时未就绪 {coverage['pending']}、批量失败 {coverage['batch_failed']}、"
              f"对账不一致 {coverage['unreconciled']}。"]
     if totals.get('same_day'):
@@ -407,7 +366,7 @@ def _summary(sections):
 def _register_gaps(ctx, sections):
     """把真实缺口登记为问题，让终态反映缺项而不是把缺值写成零。"""
     coverage = sections.get('coverage') or {}
-    labels = {'error': '返回明确错误，已停止等待', 'pending': '本次单产品读取结束仍未就绪，排查方案见逐项诊断',
+    labels = {'error': '返回明确错误，已停止等待', 'pending': '批量等待结束仍未就绪，排查方案见逐项诊断',
               'batch_failed': '因批量整体失败没有逐只结果',
               'missing_fields': '已返回记录但缺可用业务日期或有限净资产',
               'unreconciled': '未返回且未列入错误或未就绪，对账不一致'}
@@ -422,7 +381,7 @@ def _register_gaps(ctx, sections):
 
 
 def collect(ctx):
-    """先批量采集，再由 SDK 自动等待缺项单产品，结束后交付诊断。"""
+    """采集 SDK 最终批量截面，再为缺项增加只读状态诊断。"""
     sections, stages = ctx.data['sections'], []
     sections['meta'] = {
         'requested_at_beijing': datetime.now(BEIJING).isoformat(timespec='seconds'),
@@ -471,13 +430,11 @@ def collect(ctx):
         _settled(ctx, sections, identifiers, universe)
         stages.append({'stage': '最近结算参考', 'seconds': round(time.monotonic() - started, 3)})
         ctx.checkpoint()
-    targets = [item for item in identifiers
-               if item not in state['values'] and item not in state['errors']]
+    targets = [item for item in identifiers if item in state['pending'] and item not in state['values']]
     if targets:
         started = time.monotonic()
-        _diagnose(ctx, targets, state, identifiers)
-        stages.append({'stage': '缺项单产品自动等待与诊断', 'seconds': round(time.monotonic() - started, 3)})
-        publish()
+        _diagnose(ctx, targets, state)
+        stages.append({'stage': '缺项计算状态诊断', 'seconds': round(time.monotonic() - started, 3)})
     publish()
     _register_gaps(ctx, sections)
     return None
@@ -487,12 +444,18 @@ def _settled(ctx, sections, identifiers, universe):
     """另读上一交易日概览作为最近结算参考，单独成表、不并入实时小计。"""
     section = {'enabled': True, 'note': '概览日期由服务端上一交易日规则决定；不并入实时小计'}
     sections['settled_reference'] = section
-    if ctx.remaining() < SETTLED_RESERVE:
+    if ctx.remaining() < SETTLED_RESERVE + PUBLISH_RESERVE:
         section['skipped'] = '剩余预算不足，未读取最近结算参考'
         ctx.problem('settled', section['skipped'])
         return
-    result = ctx.call('balances.previous_summaries',
-                      lambda: ctx.client.balances.previous_summaries(list(identifiers)))
+
+    def read_reference():
+        """限制独立结算参考的等待，给逐项诊断和发布留出时间。"""
+        budget = min(SETTLED_RESERVE, ctx.remaining() - PUBLISH_RESERVE)
+        with request_deadline(time.monotonic() + max(0.0, budget)):
+            return ctx.client.balances.previous_summaries(identifiers)
+
+    result = ctx.call('balances.previous_summaries', read_reference)
     if not isinstance(result, dict):
         section['error'] = '上一交易日概览未返回资源映射'
         return
@@ -532,7 +495,7 @@ def _diagnosis(row, latest):
     elif status == 'batch_failed':
         parts = ['批量请求整体失败，没有逐只结果；原文见对账章节']
     elif status == 'pending':
-        parts = ['本次单产品读取结束仍未取得结果；已停止外层重试，不能据此认定服务端失败']
+        parts = ['批量等待结束仍未取得结果；不能据此认定服务端失败']
     elif status == 'unreconciled':
         parts = ['既未返回也未列入错误或未就绪；批量对账不一致']
     else:
@@ -555,18 +518,6 @@ def _diagnosis(row, latest):
         parts.append('规模字段未返回：' + '、'.join(scale_missing))
     if detail.get('outcome'):
         parts.append(detail['outcome'])
-    if row['source'] == 'single_read' and detail.get('batch_error'):
-        parts.append('批量阶段曾报错：' + _clip(detail['batch_error']))
-    single = detail.get('single_read')
-    if isinstance(single, dict):
-        parts.append('单产品查询耗时 {} 秒，等待预算 {} 秒'.format(
-            _fmt(single.get('seconds', MISSING)), _fmt(single.get('wait_budget_seconds', MISSING))))
-        error = single.get('error')
-        if isinstance(error, dict):
-            parts.append('查询错误码：' + _fmt(error.get('code', MISSING)))
-            diagnostics = error.get('details')
-            if isinstance(diagnostics, dict):
-                parts.append('最后诊断：' + _clip(diagnostics))
     compute = detail.get('compute_state')
     if isinstance(compute, dict):
         response = compute.get('response')
@@ -584,7 +535,7 @@ def _diagnosis(row, latest):
 
 
 def _render_reconcile(sections):
-    """列每轮请求差集、错误原文与不一致项。"""
+    """列最终批量截面的请求差集、错误原文与不一致项。"""
     batch = sections.get('batch') if isinstance(sections.get('batch'), dict) else {}
     attempts = batch.get('attempts') if isinstance(batch.get('attempts'), list) else []
     lines = ['## 请求与返回对账', '']
@@ -596,7 +547,7 @@ def _render_reconcile(sections):
               _fmt(len(item.get('pending') or [])), _fmt(len(item.get('unaccounted') or [])),
               '一致' if item.get('consistent') else '不一致', _fmt(item.get('seconds'))]
              for item in attempts]
-    lines.extend(_table(['轮次', '请求', '返回', '明确错误', '未就绪', '未解释差集', '核对', '秒'], table))
+    lines.extend(_table(['查询', '请求', '返回', '明确错误', '未就绪', '未解释差集', '核对', '秒'], table))
     lines.append('')
     errors = {}
     for item in attempts:
@@ -606,6 +557,12 @@ def _render_reconcile(sections):
         lines.extend(['明确错误原文（仅保留服务端原文，未据此判断产品配置或权限）：', ''])
         lines.extend(f'- `{_fmt(identifier)}`：{_fmt(message)}' for identifier, message in errors.items())
         lines.append('')
+    for item in attempts:
+        if wait := item.get('batch_wait'):
+            lines.append(f"- 批量等待到期：{_fmt(wait.get('message', '达到等待时限'))}。"
+                         '金额仍取最后一次收到的截面。')
+            if task_id := wait.get('task_id'):
+                lines.append(f"- 续查任务 `{_fmt(task_id)}` 未确认结束。")
     issues = [f"{item.get('label')}：{'；'.join(item['anomalies'])}"
               for item in attempts if item.get('anomalies')]
     failed = [item.get('label') for item in attempts if item.get('error')]
@@ -663,8 +620,7 @@ def _render_scale(sections):
         lines.extend(['- 未取得覆盖计数：无法判定本次范围与总额。', ''])
         return lines
     lines.append(f"- 请求（label=live，按 ID 去重）：{coverage['requested']} 只；"
-                 f"有可用业务日期与有限净资产 {coverage['ready']} 只"
-                 f"（批量 {coverage['batch_rows']}、单读回收 {coverage['single_rows']}）")
+                 f"有可用业务日期与有限净资产 {coverage['ready']} 只")
     lines.append(f"- 明确错误 {coverage['error']}、截止时未就绪 {coverage['pending']}、"
                  f"批量失败 {coverage['batch_failed']}、缺字段 {coverage['missing_fields']}、"
                  f"对账不一致 {coverage['unreconciled']}")
@@ -797,7 +753,7 @@ def render(data):
     lines.extend(_render_reconcile(sections))
     lines.extend(_render_scale(sections))
     lines.extend(_render_tail(sections))
-    lines.append('> 本报告为只读演示：脚本未创建、修改或删除任何业务数据。错误信息为服务端原文，'
+    lines.append('> 本报告为只读演示：脚本未创建、修改或删除任何业务数据。区分服务端错误与 SDK 截止诊断，'
                  '本报告不据此判断产品配置、权限或用户操作有误。')
     return '\n'.join(lines).rstrip() + '\n'
 

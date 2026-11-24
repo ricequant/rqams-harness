@@ -82,7 +82,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 |`fields=['positions']`，`classifier=None`|只保留平铺持仓字段|`{'positions': [持仓对象, ...]}`；原始持仓为空时可能为 `{'positions': {}}`|
 |`fields=['positions']`，`classifier='asset_class'`|按资产分类组织持仓|`{'positions': {'name': ..., 'level_type': ..., 'children': [分类节点或持仓, ...]}}`；其他分类器同样返回根对象，但层级与分组口径不同|
 |实时产品组，`include_component_weight_view=True`|外层改为成员映射|`{成员ID: 成员报表, 'error_messages': {...}, 'pending_valuation': [...]}`；每份成员报表再按 `fields` 和 `classifier` 选择字段及持仓结构|
-|资源数组|外层改为批量实时概览映射|`{资源ID: 概览, 'error_messages': {...}, 'pending_valuation': [...]}`；不能附带分类、历史日期或成员视图参数，不是多份完整持仓报表|
+|资源数组|外层改为批量实时概览映射|`{资源ID: 概览, 'error_messages': {...}, 'pending_valuation': [...]}`；可能另有 `batch_wait`，不是资源行；不能附带分类、历史日期或成员视图参数|
 |`date` 省略或为北京时间当天 / 过去日期|选择实时 / 历史数据源|单资源仍为报表对象；实际日期必须核验，不能仅根据请求日期推断|
 |`drilldown`|改变资产单元是否穿透|不改变平铺数组与分类根对象的选择；历史不支持 `False`，实时缓存限制见下文|
 |`show_futures_sterilisation`|改变期货冲销项及实时查询分支|不负责选择平铺或分类；组合限制见参数表|
@@ -107,8 +107,9 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 |`excess_returns`|超额收益|number / null|—|当日收益减基准收益|由参数选择：`fields` 含该键或 `benchmark_returns` 时返回；服务端会一并计算两者，投影只保留调用方请求的字段|
 |`{资源 ID}`|成员对象或实时概览|object|—|成员权重视图为成员产品 ID → 成员报表；批量实时截面为资源 ID → 该资源的实时概览|由参数选择：成员视图（`include_component_weight_view=True`）与数组形态的结果根键；不是实际 JSON 键|
 |`{资源 ID}.product_weight`|成员权重|number / null|—|该成员在产品组内的权重|成员视图随成员对象返回；`error_messages` 或 `pending_valuation` 非空时本次响应所有成员都不带该键|
-|`error_messages`|未就绪原因|object（资源 ID → string）|—|按资源 ID 记录该项失败原因，原样来自服务端|成员视图与数组形态恒返回，无失败项时为空对象；逐项失败容器见[逐项失败容器](connection.md#item-errors)|
-|`pending_valuation`|未就绪资源|array（string 元素）|—|已请求但未出现在结果中、且不在 `error_messages` 中的资源 ID|成员视图与数组形态恒返回；由 Harness 依据缺失项推导，服务端不返回该键；不证明已有计算任务|
+|`error_messages`|逐项诊断|object（资源 ID → string）|—|保留服务端错误原文；数组形态还记录截止仍未返回的资源|成员视图与数组形态恒返回；无诊断时为空对象|
+|`pending_valuation`|未就绪资源|array（string 元素）|—|成员视图中未返回且无明确错误的 ID；数组形态在返回时已将截止缺项归入 `error_messages`，此键为空数组|成员视图按本次读取的组详情 `product_ids` 对账，不使用缓存成员；详情缺键时报错；不证明已有计算任务|
+|`batch_wait`|批量截止诊断|object|—|`timed_out_ids` 是到截止既无结果也无后台明确错误的资源 ID；`message` 为截止说明，`task_id` 和 `response` 为超时请求的已知任务 ID 与最后响应（未取得时为 `null`）|已有至少一次批量响应、到截止仍有缺项时返回；不证明服务端存在或已结束任务，不是资源行|
 |`status`|任务状态|string（枚举）|—|服务端任务包装的外层状态|由数据决定：部分接口返回任务包装时原样保留，不拆包；见[任务终态 JSON](connection.md#task-result)|
 
 - 分类树的分类节点除 `name`、`level_type`、`children` 外，带的是同名汇总值（`market_value`、`daily_pnl`、`acc_pnl`、`weight`、`contribute_returns`、`floating_pnl` 等）：字段名与[持仓明细](fields/balances.md#position) 相同，口径是整层汇总，不能当逐仓值使用，也不能与叶子相加。根节点的 `daily_pnl_rate` 实际是头寸 `daily_returns`、`daily_pnl` 是产品层口径，与叶子同名字段不同源。
@@ -116,7 +117,7 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 - 三级估值表来源的单日持仓：平铺结果与分类树隐藏虚拟汇总行（`virtual_*`）；资产类别与交易资产属性树保留其父级金额，行业树提前排除虚拟行，并不代表完整资产分布。返回的 `positions` 不一定是该日完整持仓集合，不能逐仓加总复算总资产、总负债或净资产。各读取形态的区别见[三级估值表与虚拟汇总持仓](fields/balances.md#level3-virtual-positions)。
 - 行业分类（`shenwan_level_1`、`shenwan_level_2`、`zx_level_1`、`zx_level_2`）节点上的 `benchmark_returns` 与 `excess_returns` 是**按当前行情快照**算出的行业基准收益（该层成分股按权重加权），与请求的 `date` 无关；请求历史日期时这两个键仍给当日口径。需要历史区间或逐日的行业超额，走 [业绩归因](analytics/attribution.md#create_attribution) 的区间行业归因，或自行按 `market_data.benchmark_returns` 与行业分类计算，不要直接采用历史日期下分类节点的这两个键。
 - 成员权重视图：成员报表不能合并或摊平成产品组报表；即使投影不包含它，成员对象的 `product_weight` 与结果中的 `error_messages`、`pending_valuation` 仍会保留。
-- 成员权重的完整性只能由两个诊断键共同判定：服务端在存在错误信息时**不会计算权重**，本次响应里所有成员都没有 `product_weight`；估值未就绪的成员还会被静默跳过，此时同样不返回任何 `product_weight`。因此“权重完整”= `error_messages` 为空 **且** `pending_valuation` 为空；只看其中一项会把残缺成员集合误读成完整权重。
+- 成员视图以组配置的 `product_ids` 核对完整集合，即使 `products` 摘要漏了成员，该成员仍参与缺项检查。成员缺项与明确失败分列为 `pending_valuation` 和 `error_messages`；存在任一诊断时，Harness 移除本次所有成员的 `product_weight`，不把残缺集合上的权重暴露为完整分配。两个诊断键都空只证明成员已返回，仍需核对实际权重字段、业务日期和所需数据。服务端使用成功任务包装时，成员与这两个诊断键位于 `data` 内，外层任务状态不代替成员完整性。
 - 过去日期且指定字段：Harness 可内部额外请求 `date` 校验，但返回仍只保留调用方选定字段。实际日期为其他非空日期时抛出 `historical_date_mismatch`；`details` 包含 `requested_date`、`actual_date` 和原始响应。没有 `date` 或其为 `null` 时保留原始缺失语义。
 - 过去日期配合 `benchmark_id`：只能请求纯顶层收益字段；完整报表（`fields=None`）、`positions` 或 `daily_pnls` 会被拒绝，不能借历史持仓结果声称已按自定义基准计算。
 - 实时切换 `drilldown`：服务端缓存键不含该参数。若返回形状仍像先前口径，不能据此确认穿透已切换；记录实际返回，并在严格口径比较中避免混用缓存结果。
@@ -127,15 +128,20 @@ Python 签名：`rqamsh.balances.get(resource_or_resources: str | list[str], *, 
 
 ```python
 batch = rqamsh.balances.get(resource_or_resources=['授权测试产品', '授权测试产品组'], fields=['total_equity'])
-ready = [key for key in batch if key not in {'error_messages', 'pending_valuation'}]
+rows = batch['data'] if batch.get('status') in {'SUCCESS', 'success'} else batch
+ready = [key for key in rows if key not in {'error_messages', 'pending_valuation', 'batch_wait'}]
 ```
 
 ```console
 rqamsh balances get --resource-or-resources '["授权测试产品", "授权测试产品组"]' --fields '["total_equity"]'
 ```
 
-- 结果为资源 ID → 汇总的映射加两个诊断键，键形与返回条件见上表 `{资源 ID}`、`pending_valuation`、`error_messages` 三行。
-- 两个诊断键都为空才表示本次请求的资源均已返回，仍需核对所需字段与日期；缺失且不在 `error_messages` 中的资源只说明所需结果未返回，不证明已经触发计算或正在计算，按[未就绪与缺输入](connection.md#unready-inputs)等待或诊断，不能当作零头寸。批量与成员权重视图的重试都按本页[组合限制与错误](#组合限制与错误)的要求提交同一请求，不得改用上一交易日概览或邻近日期报表替代。
+- 按请求 ID 核对汇总映射；`pending_valuation`、`error_messages` 及可选的 `batch_wait` 都不是资源行。任务包装存在时，映射与诊断在 `data` 中。
+- 首轮已覆盖全部资源（有结果或明确错误）立即结束。有缺项才续查；间隔取 5 秒与 `poll_interval` 的较大值。资源解析与请求共享同一截止：最多 180 秒，较短的 `wait_timeout`（CLI 全局 `--wait-timeout`）优先。每轮提交相同的全部资源 ID 和原字段，不拆单查，也不改成昨收。
+- 上述时限约束 SDK 调度和响应等待；操作系统的 DNS 解析及底层多地址建连不能由同步 SDK 强制中断，墙钟可能超过预算。需要进程级硬截止时，用外部进程监督。
+- 只使用最后一轮收到的数值，不从旧轮补值；之前的逐项错误原文仍保留，除非该项后来成功返回。到期未返回且无已知错误的 ID 写入 `error_messages`，值为 `3分钟内未获取到实时头寸`；预算不足 180 秒时为 `本次等待时限内未获取到实时头寸`。未收到任何批量响应就超时仍抛 `wait_timeout`；整批 HTTP 或传输失败不自动重查。
+- 若整批返回 403，调用抛出 `permission_denied` 并保留原文，不拆批、不返回部分数值。与 HTTP 200 中的逐项错误是两种不同结果，见[资源权限](permissions.md#可见不等于可写)。
+- 同一轮不是原子快照；仍需核对实际业务日期、更新时间和所需字段。已返回记录中的字段缺失或 `null` 不触发续查。超时不证明服务端失败、取消、正在计算或没有头寸。
 - `fields` 以数组下发，服务端按字段名过滤；该调用不接受日期、分类、基准与成员视图参数。
 
 ### 返回形态与权限

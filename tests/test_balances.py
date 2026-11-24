@@ -1,13 +1,16 @@
 """单日统一入口的日期、投影和权限边界。"""
 
 from datetime import date, datetime, timedelta, timezone
+from time import monotonic
 import json
 
 import pytest
 
 from test_client import catalog_routes, service
+from rqamsh import client as client_module
 from rqamsh.client import Client, ResourceRef
 from rqamsh.errors import HarnessError
+from rqamsh.resources import balances as balance_module
 
 
 @pytest.fixture
@@ -21,11 +24,13 @@ def balance_client(monkeypatch):
         """提供实时周期已核实的资源元数据。"""
         if state["kind"] not in allowed:
             raise HarnessError("unsupported_resource", "不支持该资源类型")
-        return ResourceRef(state["kind"], "p1", resource, data={"realtime_period_type": state["period"], "products": state.get("members", [])})
+        return ResourceRef(state["kind"], "p1", resource, data={"realtime_period_type": state["period"], "product_ids": state.get("members", [])})
 
-    def call(method, path, *, params):
+    def call(method, path, *, params=None):
         """仿照后端摘要在请求日期早于夜盘归属日时读取历史。"""
         state["calls"].append((path, params))
+        if path == "product_groups/p1":
+            return {"product_ids": state.get("members", [])}
         belong_date = today + timedelta(days=3) if state["period"] == "valuation_day" else today
         target = date.fromisoformat(params["date"]) if params.get("date") else None
         historical = target is not None and (target < belong_date if path.endswith("/balance_summary") else target < today)
@@ -165,6 +170,85 @@ def test_member_view_drops_weights_when_a_member_is_missing(balance_client):
     assert "product_weight" not in result["p1"]
 
 
+@pytest.mark.parametrize("fields", [None, ["total_equity"]])
+def test_member_view_detects_members_missing_from_config_summaries(monkeypatch, fields):
+    """完整成员ID缺项必须被标记，不能因产品摘要缓存缺失而漏报。"""
+    with Client("http://localhost:9999", "0" * 24, token="test") as client:
+        ref = ResourceRef("product_group", "g1", "组", data={
+            "product_ids": ["p1", "p2"], "products": [{"id": "p1"}],
+        })
+
+        def resolve(resource, allowed):
+            """模拟配置完整但成员摘要尚未齐全的真实组详情。"""
+            return ref
+
+        def call(*args, **kwargs):
+            """模拟服务端只返回已就绪成员及残缺权重。"""
+            if args[1] == ref.path:
+                return ref.data
+            return {"p1": {"total_equity": 100, "product_weight": 1}, "error_messages": {}}
+
+        monkeypatch.setattr(client, "resolve", resolve)
+        monkeypatch.setattr(client, "call", call)
+        result = client.balances.get("g1", fields=fields, include_component_weight_view=True)
+        assert result == {
+            "p1": {"total_equity": 100}, "error_messages": {}, "pending_valuation": ["p2"],
+        }
+
+
+def test_wrapped_member_view_keeps_missing_and_failed_members_distinct(monkeypatch):
+    """任务包装保留在外层，成员缺项与明确失败在data内分别报告。"""
+    with Client("http://localhost:9999", "0" * 24, token="test") as client:
+        ref = ResourceRef("product_group", "g1", "组", data={
+            "product_ids": ["p1", "p2", "p3"], "products": [{"id": "p1"}],
+        })
+
+        def resolve(resource, allowed):
+            """返回成员摘要残缺但配置成员ID完整的资源。"""
+            return ref
+
+        def call(*args, **kwargs):
+            """返回一个已就绪成员、一个明确失败成员及一个未返回成员。"""
+            if args[1] == ref.path:
+                return ref.data
+            return {"status": "SUCCESS", "data": {
+                "p1": {"total_equity": 100, "product_weight": 1},
+                "error_messages": {"p3": "估值失败"},
+            }}
+
+        monkeypatch.setattr(client, "resolve", resolve)
+        monkeypatch.setattr(client, "call", call)
+        result = client.balances.get("g1", fields=["total_equity"], include_component_weight_view=True)
+        assert result == {"status": "SUCCESS", "data": {
+            "p1": {"total_equity": 100},
+            "error_messages": {"p3": "估值失败"}, "pending_valuation": ["p2"],
+        }}
+
+
+@pytest.mark.parametrize("missing_config", [False, True])
+def test_member_view_reads_current_configuration_instead_of_cached_members(service, missing_config):
+    """组配置变化后仍保留当前成员的有效权重；详情缺少成员集合时拒绝误判为空组。"""
+    client, state = service
+    group = {"id": "g1", "name": "组", "product_ids": ["p1", "p2"], "products": [{"id": "p1"}]}
+    detail = {"id": "g1", "name": "组"}
+    if not missing_config:
+        detail["product_ids"] = ["p1"]
+    state["catalog"] = catalog_routes([{"id": "other"}], groups=[group])
+    assert client.resolve("other", {"product"}).id == "other"
+    state["catalog"].routes["product_groups/g1"] = (200, detail)
+    state["responses"] = [(200, {"p1": {"total_equity": 100, "product_weight": 1}})]
+    if missing_config:
+        with pytest.raises(HarnessError) as error:
+            client.balances.get("组", fields=["total_equity"], include_component_weight_view=True)
+        assert error.value.code == "invalid_response"
+    else:
+        result = client.balances.get("组", fields=["total_equity"], include_component_weight_view=True)
+        assert result == {
+            "p1": {"total_equity": 100, "product_weight": 1}, "error_messages": {}, "pending_valuation": [],
+        }
+    assert sum(item[1] == "/api/rqams/v2/product_groups/g1" for item in state["requests"]) == 1
+
+
 def test_history_does_not_mislabel_unsettled_realtime(balance_client):
     """后端把未结算的历史日回退到实时截面时，不得冒充该日估值。"""
     client, state, today = balance_client
@@ -258,8 +342,8 @@ def _post_body(state):
     return json.loads(raw)
 
 
-def test_batch_get_posts_ids_and_marks_pending_valuation(service):
-    """批量分支走独立端点、体里只带资源数组并显式标注未就绪项。"""
+def test_batch_get_posts_ids_and_keeps_explicit_failure(service):
+    """全员返回或明确报错时立即结束，不再等待失败项。"""
     client, state = service
     state["catalog"] = catalog_routes([{"id": "p1", "name": "a", "user_id": 1},
                                        {"id": "p2", "name": "b", "user_id": 1}])
@@ -273,9 +357,111 @@ def test_batch_get_posts_ids_and_marks_pending_valuation(service):
     assert state["requests"][-1][1].endswith("/asset_snapshot_summary")
     assert _post_body(state) == {"product_or_group_ids": ["p1", "p2"]}
 
-    state["responses"] = [(200, {"p1": {"total_equity": 120}})]
+
+def test_batch_get_refreshes_original_set_without_mixing_rounds(service, monkeypatch):
+    """第二轮重取首轮已返回的产品，只使用第二轮的金额。"""
+    client, state = service
+    monkeypatch.setattr(balance_module, "sleep", lambda _: None)
+    state["catalog"] = catalog_routes([
+        {"id": "p1", "name": "a"}, {"id": "p2", "name": "b"},
+    ])
+    state["responses"] = [
+        (200, {"p1": {"total_equity": 120}}),
+        (200, {"p1": {"total_equity": 125}, "p2": {"total_equity": 0}}),
+    ]
+    result = client.balances.get(["a", "b"], fields=["total_equity"])
+    assert result == {"p1": {"total_equity": 125}, "p2": {"total_equity": 0},
+                      "error_messages": {}, "pending_valuation": []}
+    assert [json.loads(body) for method, path, body, _ in state["requests"] if method == "POST"] == [
+        {"product_or_group_ids": ["p1", "p2"], "fields": ["total_equity"]},
+        {"product_or_group_ids": ["p1", "p2"], "fields": ["total_equity"]},
+    ]
+
+
+@pytest.mark.parametrize("budget, message", [
+    (300, "3分钟内未获取到实时头寸"),
+    (15, "本次等待时限内未获取到实时头寸"),
+])
+def test_batch_get_reports_deadline_without_backfilling_old_snapshot(service, monkeypatch, budget, message):
+    """到期保留最后一轮金额和已有后台诊断，不能从上一轮填补缺项。"""
+    client, state = service
+    client.wait_timeout = budget
+    client.poll_interval = budget / 2
+    start = monotonic()
+    clock = [0.0]
+
+    def advance(seconds):
+        """只推进批量等候的虚拟时钟，HTTP 往返仍使用隔离服务。"""
+        clock[0] += seconds
+
+    monkeypatch.setattr(balance_module, "monotonic", lambda: start + clock[0])
+    monkeypatch.setattr(client_module, "monotonic", lambda: start + clock[0])
+    monkeypatch.setattr(balance_module, "sleep", advance)
+    state["catalog"] = catalog_routes([
+        {"id": identifier, "name": identifier} for identifier in ("p1", "p2", "p3", "p4")
+    ])
+    state["responses"] = [
+        (200, {"p1": {"total_equity": 120}, "error_messages": {"p3": "估值失败"}}),
+        (200, {"p2": {"total_equity": 130}}),
+    ]
+    result = client.balances.get(["p1", "p2", "p3", "p4"])
+    assert result == {"p2": {"total_equity": 130}, "pending_valuation": [],
+                      "error_messages": {"p1": message, "p3": "估值失败", "p4": message},
+                      "batch_wait": {"timed_out_ids": ["p1", "p4"], "message": message,
+                                     "task_id": None, "response": None}}
+    assert clock[0] == min(180, budget)
+    assert len([request for request in state["requests"] if request[0] == "POST"]) == 2
+
+
+def test_batch_get_does_not_replay_failed_http_round(service, monkeypatch):
+    """整批 HTTP 500 不能变成逐项未就绪，也不再重查。"""
+    client, state = service
+    monkeypatch.setattr(balance_module, "sleep", lambda _: None)
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a"}])
+    state["responses"] = [(200, {}), (500, {"message": "批量计算出错"})]
+    with pytest.raises(HarnessError, match="批量计算出错") as error:
+        client.balances.get(["a"])
+    assert (error.value.code, error.value.status) == ("http_error", 500)
+    assert sum(request[0] == "POST" for request in state["requests"]) == 2
+
+
+def test_batch_get_propagates_whole_batch_denial_without_splitting(service):
+    """整批 403 保留原文，不改查单只，不产出部分金额或空截面。"""
+    client, state = service
+    state["catalog"] = catalog_routes([{"id": "p1"}, {"id": "p2"}])
+    state["responses"] = [(403, {"message": "整批权限不足"})]
+    with pytest.raises(HarnessError, match="整批权限不足") as error:
+        client.balances.get(["p1", "p2"], fields=["total_equity"])
+    assert (error.value.code, error.value.status) == ("permission_denied", 403)
+    assert [path for _, path, *_ in state["requests"] if not path.endswith(
+        ("/products", "/product_groups", "/products/asset_units")
+    )] == ["/api/rqams/v2/asset_snapshot_summary"]
+    assert _post_body(state) == {"product_or_group_ids": ["p1", "p2"], "fields": ["total_equity"]}
+
+
+def test_batch_get_keeps_last_response_when_following_task_wait_times_out(service, monkeypatch):
+    """末轮 HTTP 202 未完成时保留最近完整响应，不重放异步查询。"""
+    client, state = service
+    start = monotonic()
+    clock = [start]
+
+    def advance(seconds):
+        """推进 SDK 时钟而不真的等待 180 秒。"""
+        clock[0] += seconds
+
+    for module in (balance_module, client_module):
+        monkeypatch.setattr(module, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(module, "sleep", advance)
+    state["catalog"] = catalog_routes([{"id": "p1", "name": "a"}, {"id": "p2", "name": "b"}])
+    state["responses"] = [(200, {"p1": {"total_equity": 120}}),
+                          (202, {"task_id": "round2"})]
+    client.poll_interval = 100
     result = client.balances.get(["a", "b"])
-    assert result["pending_valuation"] == ["p2"] and result["error_messages"] == {}
+    assert result["p1"] == {"total_equity": 120}
+    assert result["error_messages"] == {"p2": "3分钟内未获取到实时头寸"}
+    assert result["batch_wait"]["task_id"] == "round2"
+    assert clock[0] - start == 180
+    assert sum(request[0] == "POST" for request in state["requests"]) == 2
 
 
 def test_batch_get_rejects_single_resource_only_parameters(service):
