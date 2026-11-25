@@ -7,12 +7,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
 import threading
+from time import monotonic
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from .client import Client, DEFAULT_BASE_URL
 from .errors import HarnessError
-from .settings import save_settings, settings_path as default_settings_path
+from .settings import _save_locked, _settings_lock, settings_path as default_settings_path
 
 _MAX_BODY = 16 * 1024
 _WORKSPACE_CHARS = set("0123456789abcdefABCDEF")
@@ -132,6 +133,7 @@ def login(
     target = Path(settings_path).expanduser() if settings_path is not None else default_settings_path()
     nonce = secrets.token_urlsafe(24)
     path = f"/{nonce}/"
+    deadline = monotonic() + timeout
     # finalized 表示本次登录的终态已定（写入或内部失败）；所有写入路径在同一把锁里先判断它。
     state: dict[str, Any] = {
         "done": threading.Event(),
@@ -165,7 +167,7 @@ def login(
             登录结束、终态已定或代次已被更新的提交取代时一律不能推进；省略 generation 时
             只做前两项判断（用于请求入口与认领代次）。
             """
-            if state["closed"] or state["finalized"]:
+            if state["closed"] or state["finalized"] or monotonic() >= deadline:
                 return False
             return generation is None or state["generation"] == generation
 
@@ -200,38 +202,40 @@ def login(
             return identifiers
 
         def _save(self, token: str, selected: str, generation: int) -> None:
-            """保存令牌与选定空间；认领终态与写盘在同一临界区，晚到或过期的提交一律拒绝。"""
-            with state["lock"]:
-                allowed = self._may_commit(generation)
-                failure = None
+            """获文件锁后才认领终态；只有实际开始的写入可以越过等待期限。"""
+            allowed, failure = False, None
+            try:
+                with _settings_lock(target, deadline=deadline) as locked_target:
+                    with state["lock"]:
+                        allowed = self._may_commit(generation)
+                        if allowed:
+                            state["finalized"] = True
+                    if allowed:
+                        _save_locked(locked_target, token, selected, base_url)
+            except Exception:
+                with state["lock"]:
+                    if not allowed and self._may_commit(generation):
+                        allowed = state["finalized"] = True
                 if allowed:
-                    # 先定局再写盘：之后的保存、失败与终态发布都不再改动本次登录。
-                    state["finalized"] = True
-                    try:
-                        save_settings(token, selected, base_url, path=target)
-                    except Exception:
-                        # 写入方已定局，任何保存异常都安全收敛为 settings_error 并结束登录。
-                        failure = HarnessError("settings_error", f"保存设置失败：{target}")
-                        state["error"] = failure
-                    else:
-                        state["workspace_id"] = selected
+                    failure = HarnessError("settings_error", f"保存设置失败：{target}")
             if not allowed:
                 try:
                     self._send(409, _form(path, base_url, "登录已结束或有更新的令牌提交，请重新运行登录"))
                 except OSError:
                     return
                 return
-            if failure is not None:
-                try:
-                    self._send(500, _page("保存失败", "<h1>保存失败</h1><p>请检查本机设置文件权限。</p>"))
-                finally:
-                    state["done"].set()
-                return
-            try:
-                # 设置已经写入，浏览器读取成功页失败也不能把登录报成失败。
-                self._send(200, _success(selected))
-            finally:
+            with state["lock"]:
+                state["error"] = failure
+                if failure is None:
+                    state["workspace_id"] = selected
                 state["done"].set()
+            try:
+                if failure is not None:
+                    self._send(500, _page("保存失败", "<h1>保存失败</h1><p>请检查本机设置文件权限。</p>"))
+                else:
+                    self._send(200, _success(selected))
+            except OSError:
+                return
 
         def _submit_token(self, raw: str) -> None:
             """处理令牌提交：校验成员身份后立即保存显式空间或服务端返回的首项。"""
@@ -337,8 +341,12 @@ def login(
 
             open_browser = webbrowser.open
         opened = bool(open_browser(url))
-        if not state["done"].wait(timeout):
-            raise HarnessError("auth_timeout", "等待浏览器登录超时", details={"url": url})
+        if not state["done"].wait(max(0, deadline - monotonic())):
+            with state["lock"]:
+                if not state["finalized"]:
+                    state["closed"] = True
+                    raise HarnessError("auth_timeout", "等待浏览器登录超时", details={"url": url})
+            state["done"].wait()
         if state["error"] is not None:
             raise state["error"]
         if state["workspace_id"] is None:

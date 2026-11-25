@@ -7,14 +7,14 @@ from contextvars import copy_context
 from pathlib import Path
 from threading import Lock
 from time import monotonic, sleep
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote
 import math
 import os
 
 import requests
 
 from .errors import HarnessError
-from .settings import load_settings, remember_workspace, settings_path as default_settings_path
+from .settings import _normalized_base_url, load_settings, remember_workspace, settings_path as default_settings_path
 from .transport import DeadlineAdapter, cap_request_deadline, request_deadline
 
 
@@ -59,29 +59,6 @@ def _normalized_token(token):
     if any(char in value for char in "\r\n"):
         raise HarnessError("invalid_config", "token 不能包含换行")
     return value
-
-
-def _normalized_base_url(value):
-    """规范化部署 API 根地址，用于请求和保存身份的部署绑定比较。"""
-    if not isinstance(value, str):
-        raise HarnessError("invalid_config", "base_url 必须为 HTTP(S) 地址字符串")
-    try:
-        parsed = urlsplit(_without_wrapping_whitespace(value))
-        port = parsed.port
-    except ValueError as exc:
-        raise HarnessError("invalid_config", "base_url 必须为合法 HTTP(S) 地址") from exc
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or parsed.query or parsed.fragment:
-        raise HarnessError("invalid_config", "base_url 必须为不带身份、查询和片段的 HTTP(S) 地址")
-    host = parsed.hostname.lower()
-    if ":" in host:
-        host = f"[{host}]"
-    default_port = 443 if parsed.scheme == "https" else 80
-    if port is not None and port != default_port:
-        host = f"{host}:{port}"
-    path = parsed.path.rstrip("/")
-    if not path.endswith("/api/rqams/v2"):
-        path += "/api/rqams/v2"
-    return urlunsplit((parsed.scheme, host, path, "", ""))
 
 
 def _catalog_neutral(path) -> bool:
@@ -200,10 +177,10 @@ class Client:
         self.session.headers.update(headers)
         self._closed = False
         self._resources = {}
-        self._settings_path = target
-        self._remember_settings = bool(used_saved_token and settings.get("token"))
-        if self._remember_settings and explicit_workspace:
-            remember_workspace(self.workspace_id, path=self._settings_path)
+        self._settings_path = target.absolute()
+        self._saved_identity = (token, root) if used_saved_token else None
+        if explicit_workspace:
+            self._remember_workspace(self.workspace_id)
         # (workspace_id, 抓取时刻, 集合索引)；仅用于 ID/名称转换与业务路由配置。
         # 不逐项读取详情或预判业务权限，实际操作交由后台鉴权。
         self._catalog_index_cache = None
@@ -584,12 +561,17 @@ class Client:
         if not isinstance(workspace_id, str) or len(workspace_id) != 24 or any(c not in "0123456789abcdefABCDEF" for c in workspace_id):
             raise HarnessError("invalid_config", "workspace_id 必须为 24 位十六进制 ID")
         selected = workspace_id.lower()
-        if self._remember_settings:
-            remember_workspace(selected, path=self._settings_path)
+        self._remember_workspace(selected)
         self.workspace_id = selected
         self.session.headers["X-AMS-Workspace"] = self.workspace_id
         self._clear_catalogs()
         return self.workspace_id
+
+    def _remember_workspace(self, selected):
+        """仅为客户端最初复用的保存身份写回工作空间。"""
+        if self._saved_identity is not None:
+            token, base_url = self._saved_identity
+            remember_workspace(selected, token=token, base_url=base_url, path=self._settings_path)
 
     @staticmethod
     def partial_failure(result, message="部分或全部数据导入失败；请检查逐项结果，勿全量重复上传"):

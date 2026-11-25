@@ -152,6 +152,40 @@ def test_saved_identity_remembers_successful_member_choice(service, tmp_path):
         assert load_settings(settings)["workspace_id"] == B
 
 
+@pytest.mark.parametrize("change", ["token", "deployment"])
+def test_old_client_does_not_rewrite_new_login(service, tmp_path, change):
+    """旧客户端可切自己的空间，但重新登录的身份或部署不继承该选择。"""
+    original, state = service
+    base = original.base_url.removesuffix("/api/rqams/v2")
+    settings = tmp_path / "saved.json"
+    save_settings("old-token", A, base_url=base, path=settings)
+    with Client(base_url=base, settings_path=settings) as client:
+        token = "new-token" if change == "token" else "old-token"
+        deployment = "https://other.example.com" if change == "deployment" else base
+        save_settings(token, A, base_url=deployment, path=settings)
+        state["responses"] = [(200, {"data": ROWS})]
+        client.workspaces.use(workspace=B)
+        assert client.session.headers["X-AMS-Workspace"] == B
+        with Client(settings_path=settings) as new_client:
+            assert new_client.workspace_id == A
+            assert new_client.session.headers["Authorization"] == f"Bearer {token}"
+            assert new_client.base_url == deployment + "/api/rqams/v2"
+
+
+def test_saved_identity_remembers_space_with_equivalent_deployment_url(service, tmp_path):
+    """相同部署的两种地址写法，不影响保存下一次的默认空间。"""
+    original, state = service
+    base = original.base_url.removesuffix("/api/rqams/v2")
+    settings = tmp_path / "saved.json"
+    save_settings("saved-token", A, base_url=base, path=settings)
+    with Client(settings_path=settings) as client:
+        deployment = base + "/api/rqams/v2/"
+        save_settings("saved-token", A, base_url=deployment, path=settings)
+        state["responses"] = [(200, {"data": ROWS})]
+        client.workspaces.use(workspace=B)
+    assert load_settings(settings) == {"base_url": deployment, "token": "saved-token", "workspace_id": B}
+
+
 def test_settings_failure_keeps_active_workspace(service, tmp_path, monkeypatch):
     """持久化选择失败时，客户端不能暗中切到用户认为未选中的空间。"""
     original, state = service

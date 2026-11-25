@@ -98,9 +98,10 @@ def collect(ctx):
 
     missing = [name for name in ("total_equity", "unit_net_value", "daily_returns", "update_time")
                if snap.get(name) is None]
-    if not isinstance(snap.get("positions"), list):
+    positions = _flat_positions(snap.get("positions"))
+    if positions is None:
         missing.append("positions")
-        ctx.problem("持仓", "单次快照未返回 positions；不重读或拼接摘要，前十与暴露按缺口处理")
+        ctx.problem("持仓", "单次快照未返回可用的平铺持仓；不能当作空仓或拼接摘要")
     if missing:
         ctx.problem("完整性", "当前快照缺少字段：" + "、".join(missing))
     update_time = snap.get("update_time") if isinstance(snap.get("update_time"), str) else None
@@ -167,15 +168,15 @@ def collect(ctx):
     ctx.checkpoint()
 
     prev_report = results.get("balances.get(previous)")
-    prev_positions = prev_report.get("positions") if isinstance(prev_report, dict) else None
+    prev_positions = _flat_positions(prev_report.get("positions")) if isinstance(prev_report, dict) else None
     prev_comparable = (isinstance(prev_report, dict) and prev_date is not None
                        and _iso(prev_report.get("date")) == prev_date
-                       and isinstance(prev_positions, list))
+                       and prev_positions is not None)
     if prev_date and not prev_comparable:
         if not isinstance(prev_report, dict):
             ctx.problem("昨日持仓", f"未能读取 {prev_date} 的完整持仓")
-        elif not isinstance(prev_positions, list):
-            ctx.problem("昨日持仓", f"{prev_date} 的响应没有 positions 列表；"
+        elif prev_positions is None:
+            ctx.problem("昨日持仓", f"{prev_date} 的响应没有可用的平铺持仓；"
                                     "不把缺失当空仓，本次不做昨日变化比较")
         else:
             ctx.problem("昨日持仓", f"昨日读取的业务日期 "
@@ -192,23 +193,29 @@ def collect(ctx):
                                     historical, ctx)
     ctx.checkpoint()
 
-    rows = list(_aggregate(snap.get("positions")).values())
-    if not rows:
-        ctx.problem("持仓", "当前快照没有可用叶子持仓")
-    partial_rows = [row for row in rows
-                    if row.get("market_value") is None or row.get("market_value_missing")]
+    rows = list(_aggregate(positions).values()) if positions is not None else None
+    partial_rows = [row for row in (rows or ()) if row["market_value_missing"]]
     if partial_rows:
         sample = "、".join(str(row.get("order_book_id") or "未知") for row in partial_rows[:5])
         ctx.problem("持仓", f"{len(partial_rows)} 个聚合持仓键缺少市值（{sample}）："
                             "市值合计、占净值与集中度只覆盖已知金额，不完整")
     nav = _num(snap.get("total_equity"))
     prev_rows = list(_aggregate(prev_positions).values()) if prev_comparable else []
-    for label, holdings_rows in (("当前", rows), ("昨日", prev_rows)):
+    comparable = rows is not None and prev_comparable and not partial_rows
+    if prev_comparable and any(row["market_value_missing"] for row in prev_rows):
+        ctx.problem("昨日持仓", "对照日存在缺市值的持仓，不能核验排名和变化")
+        comparable = False
+    for label, holdings_positions in (("当前", positions), ("昨日", prev_positions if prev_comparable else None)):
+        if any(not all(_position_key_text(row.get(field))
+                       for field in ("order_book_id", "direction")) for row in (holdings_positions or ())):
+            ctx.problem("持仓", f"{label}持仓缺少代码或方向，不能核验两日持仓变化")
+            comparable = False
+    for label, holdings_rows in (("当前", rows or []), ("昨日", prev_rows)):
         missing_quantity = [row for row in holdings_rows if row.get("quantity_missing")]
         if missing_quantity:
             ctx.problem("持仓", f"{label} {len(missing_quantity)} 个聚合持仓键数量缺失；"
                                 "不把已知数量小计当作完整数量，也不计算其数量变化")
-    holdings = _holdings(rows, prev_rows, nav, prev_nav.get("total_equity"), prev_comparable)
+    holdings = _holdings(rows, prev_rows, nav, prev_nav.get("total_equity"), comparable)
     for name in ("top10", "concentration", "asset_classes", "industries", "diff"):
         sections[name] = holdings[name]
     sections["summary"] = _summary_lines(sections)
@@ -263,12 +270,24 @@ def _key(position):
     return tuple(parts)
 
 
+def _flat_positions(value):
+    """接受真实空列表；不把缺失、分类根或包含无法识别行的列表当作有效持仓。"""
+    if isinstance(value, list) and all(
+        isinstance(row, dict) and _position_key_text(row.get("asset_class")) for row in value
+    ):
+        return value
+    return None
+
+
+def _position_key_text(value):
+    """仅使用非空且无首尾空白的字符串作为持仓身份键。"""
+    return isinstance(value, str) and bool(value) and value == value.strip()
+
+
 def _aggregate(positions):
     """按唯一持仓键聚合叶子持仓，避免同键多条记录被覆盖或重复排名。"""
     rows = {}
-    for position in positions or []:
-        if not isinstance(position, dict) or not position.get("asset_class"):
-            continue
+    for position in positions:
         key = _key(position)
         row = rows.get(key)
         if row is None:
@@ -303,6 +322,12 @@ def _rank(rows, nav):
 
 def _holdings(rows, prev_rows, nav, nav_prev, has_previous):
     """整理前十、集中度、资产类别、行业与昨日变化，供报告直接渲染。"""
+    diff = {"available": has_previous, "new": [], "exited": [], "changes": []}
+    if rows is None:
+        return {"top10": [], "concentration": {}, "asset_classes": [], "industries": [], "diff": diff}
+    partial_rows = [row for row in rows if row["market_value_missing"]]
+    if not has_previous:
+        prev_rows = []
     ranked = _rank(rows, nav)
     ranked_prev = _rank(prev_rows, nav_prev)
     previous = {row["key"]: row for row in prev_rows}
@@ -329,14 +354,13 @@ def _holdings(rows, prev_rows, nav, nav_prev, has_previous):
         })
     abs_values = [abs(row["market_value"]) for row in ranked]
     top3, top10_sum, total = sum(abs_values[:3]), sum(abs_values[:10]), sum(abs_values)
-    partial_rows = [row for row in rows
-                    if row.get("market_value") is None or row.get("market_value_missing")]
+    has_amounts = bool(ranked) or not partial_rows
     concentration = {
         "positions": len(ranked),
         "missing_positions": len(partial_rows),
         "complete": not partial_rows,
-        "top3_nav_pct": top3 / nav * 100 if nav and nav > 0 else None,
-        "top10_nav_pct": top10_sum / nav * 100 if nav and nav > 0 else None,
+        "top3_nav_pct": top3 / nav * 100 if has_amounts and nav and nav > 0 else None,
+        "top10_nav_pct": top10_sum / nav * 100 if has_amounts and nav and nav > 0 else None,
         "top10_share_pct": top10_sum / total * 100 if total > 0 else None,
         "nav_positive": bool(nav and nav > 0),
     }
@@ -372,7 +396,6 @@ def _holdings(rows, prev_rows, nav, nav_prev, has_previous):
         bucket["nav_pct"] = (bucket["value"] / nav * 100
                              if bucket["complete"] and bucket["value"] is not None
                              and nav and nav > 0 else None)
-    diff = {"available": has_previous, "new": [], "exited": [], "changes": []}
     if has_previous:
         today_top, prev_top = ranked[:10], ranked_prev[:10]
         today_keys = {row["key"] for row in today_top}
@@ -808,7 +831,8 @@ def render(data):
                          _money(row.get("market_value"))
                          + ("（部分）" if row.get("market_value_partial") else ""),
                          _pctp(row.get("weight_pct")),
-                         _txt(row.get("quantity"), 2), row.get("prev_rank") or "前十外"])
+                         _txt(row.get("quantity"), 2),
+                         (row.get("prev_rank") or "前十外") if diff.get("available") else "未核验"])
     top_section = ("## 前十持仓（按绝对市值）\n\n"
                    "筛选口径：全部叶子持仓按 |market_value| 降序取十，包含非股票与多空两个方向；"
                    "零市值不参与排名。占净值权重为带符号市值/净资产，净资产不为正时不计算；"
@@ -818,7 +842,9 @@ def render(data):
 
     nav_positive = concentration.get("nav_positive")
     conc_complete = concentration.get("complete")
-    if not nav_positive:
+    if not concentration:
+        nav_note = "当前持仓不可用，未计算"
+    elif not nav_positive:
         nav_note = "未取得净资产，未计算" if nav_positive is None else "净资产不为正，不计算"
     elif conc_complete is False:
         nav_note = "仅已知金额小计（partial），含缺市值持仓"
@@ -863,8 +889,10 @@ def render(data):
         diff_intro = (f"- 前十新进：{names(diff.get('new'))}\n"
                       f"- 前十退出：{names(diff.get('exited'))}\n"
                       "- 口径：只比较两个期末持仓键；数量不变也可能先买后卖，不能据此证明期间无交易。")
+    elif not concentration:
+        diff_intro = "- 当前持仓不可用：本次不给出昨日以来的变化；这不是空仓。"
     else:
-        diff_intro = ("- 昨日持仓不可用或不可比较：本次不给出前十名单、权重、数量或市值变化；"
+        diff_intro = ("- 昨日持仓不可用，或两日持仓不可比较：本次不给出前十名单、权重、数量或市值变化；"
                       "这不是“无变化”。")
     diff_section = ("## 昨日以来前十变化\n\n" + diff_intro + "\n\n"
                     + _table(["代码", "名称", "资产类别", "方向", "名次 今/昨",

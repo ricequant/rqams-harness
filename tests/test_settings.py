@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from rqamsh import auth as auth_module
+from rqamsh import settings as settings_module
 from rqamsh.auth import login
 from rqamsh.client import Client
 from rqamsh.errors import HarnessError
@@ -168,7 +169,7 @@ def failing_factory(status):
 
 
 def gated_save(monkeypatch):
-    """替换 auth.save_settings：首次写入前报告并阻塞，制造确定的写入窗口。
+    """在首次登录写盘前报告并阻塞，制造确定的写入窗口。
 
     Returns:
         ``claimed`` 表示首次写入已进入临界区，``allow`` 放行该写入，``count`` 记录调用次数。
@@ -176,9 +177,9 @@ def gated_save(monkeypatch):
     claimed, allow = threading.Event(), threading.Event()
     counter = {"calls": 0}
     lock = threading.Lock()
-    original = auth_module.save_settings
+    original = auth_module._save_locked
 
-    def save(token, workspace_id=None, base_url=None, *, path=None):
+    def save(path, token, workspace_id, base_url):
         """记录调用次数；首次调用在真正写盘前阻塞到测试放行。"""
         with lock:
             counter["calls"] += 1
@@ -186,9 +187,9 @@ def gated_save(monkeypatch):
         if first:
             claimed.set()
             assert allow.wait(10), "设置写入未被放行"
-        return original(token, workspace_id, base_url, path=path)
+        return original(path, token, workspace_id, base_url)
 
-    monkeypatch.setattr(auth_module, "save_settings", save)
+    monkeypatch.setattr(auth_module, "_save_locked", save)
     return claimed, allow, counter
 
 
@@ -320,9 +321,10 @@ def test_invalid_settings_file_is_reported_without_token(tmp_path):
 def test_remember_workspace_updates_existing_file_only(tmp_path):
     """切换空间时只更新已有设置；没有设置文件时不会凭空创建令牌文件。"""
     target = tmp_path / "rqamsh_settings.json"
-    assert remember_workspace(OTHER_WORKSPACE, path=target) is None
-    save_settings("token-value", WORKSPACE, path=target)
-    assert remember_workspace(OTHER_WORKSPACE.lower(), path=target) == target
+    root = BASE_URL + "/api/rqams/v2"
+    assert remember_workspace(OTHER_WORKSPACE, token="token-value", base_url=root, path=target) is None
+    save_settings("token-value", WORKSPACE, base_url=BASE_URL, path=target)
+    assert remember_workspace(OTHER_WORKSPACE, token="token-value", base_url=root, path=target) == target
     assert load_settings(target)["workspace_id"] == OTHER_WORKSPACE.lower()
     assert load_settings(target)["token"] == "token-value"
 
@@ -504,6 +506,43 @@ def test_login_reports_settings_write_failure(tmp_path):
     assert isinstance(run.error, HarnessError)
     assert run.error.code == "settings_error"
     assert VALID_TOKEN not in str(run.error)
+
+
+def test_login_queued_for_settings_lock_cannot_save_after_timeout(tmp_path, monkeypatch):
+    """文件锁排队不得延长浏览器的待提交阶段，也不得晚到覆盖旧身份。"""
+    target = tmp_path / "settings.json"
+    save_settings("previous-token", WORKSPACE, BASE_URL, path=target)
+    entered = threading.Event()
+    original = settings_module._settings_lock
+
+    def observe_lock(path, **kwargs):
+        """标记浏览器已进入文件锁队列，锁的排队和释放由真实实现负责。"""
+        entered.set()
+        return original(path, **kwargs)
+
+    with LoginRun(member_factory([{"id": OTHER_WORKSPACE}]), target, timeout=1) as run:
+        with original(target):
+            monkeypatch.setattr(auth_module, "_settings_lock", observe_lock)
+            post = run.post_async({"token": VALID_TOKEN})
+            assert entered.wait(2)
+            assert run.wait_finished(2), "登录超时仍阻塞在设置锁上"
+            assert run.error.code == "auth_timeout"
+            assert LoginRun.joined(*post)[0] == 409
+    assert load_settings(target) == {"token": "previous-token", "workspace_id": WORKSPACE, "base_url": BASE_URL}
+
+
+def test_login_write_replaces_settings_symlink_not_its_target(tmp_path):
+    """设置路径的符号链接只能被替换，不向其共享目标写入凭据。"""
+    template = tmp_path / "template.json"
+    template.write_text("{}", encoding="utf-8")
+    target = tmp_path / "settings.json"
+    try:
+        target.symlink_to(template)
+    except OSError as exc:
+        pytest.skip(f"本机无创建符号链接权限：{exc}")
+    save_settings(VALID_TOKEN, WORKSPACE, BASE_URL, path=target)
+    assert template.read_text(encoding="utf-8") == "{}"
+    assert not target.is_symlink() and load_settings(target)["token"] == VALID_TOKEN
 
 
 def test_login_completed_save_blocks_late_stale_token_write(tmp_path, monkeypatch):
