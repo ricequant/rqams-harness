@@ -37,6 +37,10 @@
 
 [对账案例](demo/reconciliation-controls/README.md)展示现金、应收应付差异中如何区分真实业务事件与有凭证依据的科目调整。
 
+[估值表覆盖后补录托管事件](demo/valuation-report-reconciliation/custodian-event-after-overwrite/README.md)展示报告中的净资产和份额已正确、但因漏记申购而导致覆盖日盈亏异常时，怎样补录并复核。
+
+[漏记产品分红](demo/returns-diagnosis/missing-product-dividend/README.md)展示如何区分权益生效日与付款日，以及为何[估值表覆盖后日结净值正确，实时收益率仍可能不对](demo/returns-diagnosis/missing-product-dividend/README.md#realtime-before-report)。
+
 [`upload_file`](#upload_file) 是按产品与日期区间覆盖，不是增量追加。手工补录应在导入后进行；再次覆盖同一区间时，把需要保留的补录一并放入文件。
 
 ## 写入前核对
