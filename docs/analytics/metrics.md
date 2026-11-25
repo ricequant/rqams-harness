@@ -14,7 +14,7 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |参数|类型|默认/必填|语义|
 |---|---|---|---|
 |`resource`|`str`|必填|产品或产品组唯一 ID 或名称。|
-|`start_date`|`str \| None`|`None`|YYYY-MM-DD；省略使用资源起始日。|
+|`start_date`|`str \| None`|`None`|YYYY-MM-DD；省略使用资源起始日。单只指增产品从交易起始日分析时，首日不计入受影响的超额指标，见[指增超额起算口径](#index-enhanced-excess-start)。|
 |`end_date`|`str \| None`|`None`|YYYY-MM-DD；省略使用最近结算日，且受产品到期日限制。|
 |`benchmark`|`str \| None`|`None`|省略时使用产品或产品组已配置的基准；显式覆盖用“类型,ID”，例如 `index,000300.XSHG`。其他类型和 ID 从[当前空间可用基准](../market_data.md#benchmarks)核对。|
 |`extra_indicators`|`list[str] \| None`|`None`|额外指标名称数组。|
@@ -33,7 +33,22 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 
 - **风险统计按同一套方法读。** `daily_risk`、`weekly_risk`、`monthly_risk` 分别使用相应频率下的配对产品收益与基准收益；`annual_risk` 按年组织这些样本，并取该年区间的无风险利率。Alpha、Sharpe、波动、回撤、跟踪误差等由 [RQRISK](https://github.com/ricequant/rqrisk) 的 [`Risk` 实现](https://github.com/ricequant/rqrisk/blob/1.0.13/rqrisk/risk.py)计算。AMS 决定传入的样本、频率和无风险利率，并额外组装年化收益、单利年化和卡马尔比率等字段。源码链接用于查统计实现；接口的输入口径和返回字段仍以本页为准。
 - **区间收益先区分输出用途。** `returns_summary.total` 是收益概览：单产品有可用净值时，从整个区间的基点和期末累计单位净值求差，再除以基点单位净值。`{frequency}_risk.total_returns` 是对应频率的收益连乘。在使用同一组对齐后日收益的分支（如产品组），`returns_summary.total` 与 `daily_risk.total_returns` 都是日收益连乘；走净值差分支时，两者可能不同，例如分红使单位净值与累计单位净值分离。不能只凭字段都叫「区间累计收益」就直接替换。
+- **核对超额前先确认起算日。** 单产品策略为 `index_enhanced`，且分析起始日等于 `trading_start_date` 时，受影响的超额指标不计入首日，绝对收益口径不变。不能拿原区间绝对收益和原区间基准直接复算这些超额；见下方[指增超额起算口径](#index-enhanced-excess-start)。
 - **需要核对样本时再取序列。** 在 `extra_indicators` 中选 `asset_series` 和 `benchmark_series`，核对相同频率下两边的日期和收益。`asset_series.daily[].daily_returns` 是整理后的指标日收益，不是[原始头寸时序](../balances.md#series)中的同名字段；日期对齐补出的行也不证明当日头寸参与了计算。
+
+<a id="index-enhanced-excess-start"></a>
+
+#### 指增超额起算口径
+
+单只指增产品从交易起始日分析时，首日不计入下列超额指标：以交易起始日的结算单位净值和累计单位净值为基点，产品与基准都从产品日历中的下一交易日开始取样本，期末不变。这是指增超额的正常口径，不改变绝对收益。如果请求从后续日期开始或查的是产品组，不按此规则再跳一天；下一交易日超过期末，或缺首日结算净值、后续头寸摘要或基准样本时，服务端不做这次调整。
+
+|受影响的返回位置|按指增口径计算的字段|
+|---|---|
+|`returns_summary`|`arithmetic_excess`、`geometric_excess`|
+|`daily_risk`、`weekly_risk`、`monthly_risk` 及 `annual_risk`|`total_arithmetic_excess_return`、`total_geometric_excess_return`、`arithmetic_excess_annual_return`、`geometric_excess_annual_return`、`excess_sharpe`、`geometric_excess_max_drawdown`、`excess_annual_volatility`、`information_ratio`、`annual_tracking_error`；仅替换重算结果实际返回的年份、频率及字段，未匹配的保留原值|
+|`monthly_returns` 年节点及月节点|重算结果中匹配的年、月节点替换 `arithmetic_excess_returns`、`geometric_excess_returns`；只有月节点还会替换 `annual_excess_volatility`（若重算结果返回该字段）。不替换周节点|
+
+`asset_series`、`benchmark_series`、`excess_returns` 时序仍按原区间返回，不能把原区间时序的首日当作重算超额的首个样本。核验时保留原请求和原返回，再用同一基准、同一期末单独核对首日结算后的区间；确认基点及两侧实际样本对齐后，再复算算术差和几何比值。缺证据时只报告已取得的指标和核验缺口，不补零或据此认定计算异常。见[收益排查案例](../demo/returns-diagnosis/README.md#index-enhanced-excess-check)。
 
 <a id="indicator-sample-coverage"></a>
 
@@ -82,8 +97,8 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`{frequency}_risk.annual_tracking_error`|年化跟踪误差|number / null|随父级对象返回|`std(r-b)*sqrt(F)`|基准全 NaN 时 NaN|
 |`{frequency}_risk.geometric_excess_max_drawdown`|几何超额最大回撤|number / null|随父级对象返回|对 `cumprod(1+r)/cumprod(1+b)`（含初始 1）求最大回撤|—|
 |`{frequency}_risk.total_returns`|区间累计收益率|number / null|随父级对象返回|`R`|该频率收益连乘；与 `returns_summary.total` 的关系见[收益概览与风险统计](#收益概览与风险统计)|
-|`{frequency}_risk.total_geometric_excess_return`|区间几何超额收益率|number / null|随父级对象返回|`(1+R)/(1+B) - 1`|—|
-|`{frequency}_risk.total_arithmetic_excess_return`|区间算术超额收益率|number / null|随父级对象返回|`R-B`|与逐期算术超额连乘不同|
+|`{frequency}_risk.total_geometric_excess_return`|区间几何超额收益率|number / null|随父级对象返回|`(1+R)/(1+B) - 1`|`R`、`B` 取同一超额窗口；见[指增起算](#index-enhanced-excess-start)|
+|`{frequency}_risk.total_arithmetic_excess_return`|区间算术超额收益率|number / null|随父级对象返回|`R-B`|与逐期算术超额连乘不同；见[指增起算](#index-enhanced-excess-start)|
 |`{frequency}_risk.total_annual_returns`|日频区间累计收益折算的年化收益率|number / null|随父级对象返回|所有频率统一引用 `(1+R_daily)^(D/n_daily) - 1`，`D=交易252/自然365`|—|
 |`{frequency}_risk.annual_simple_interest`|日频区间累计收益折算的单利年化收益率|number / null|随父级对象返回|所有频率统一引用 `R_daily/n_daily*S`，`S=交易250/自然365`|—|
 |`{frequency}_risk.calmar_ratio`|卡马尔比率|number / null|随父级对象返回|上述日频期间年化收益除该频率 `max_drawdown`|期间年化收益相对最大回撤；零回撤时不能理解为可确定的无限回报|
@@ -109,8 +124,8 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`annual_risk.{year}.{frequency}_risk.annual_tracking_error`|年化跟踪误差|number / null|随父级对象返回|`std(r-b)*sqrt(F)`|基准全 NaN 时 NaN|
 |`annual_risk.{year}.{frequency}_risk.geometric_excess_max_drawdown`|几何超额最大回撤|number / null|随父级对象返回|对 `cumprod(1+r)/cumprod(1+b)`（含初始 1）求最大回撤|—|
 |`annual_risk.{year}.{frequency}_risk.total_returns`|区间累计收益率|number / null|随父级对象返回|`R`|只连乘该年对应频率的收益；`returns_summary.total` 覆盖整个请求区间，有可用净值的单产品还改用净值差法，不能用来校验该年累计收益|
-|`annual_risk.{year}.{frequency}_risk.total_geometric_excess_return`|区间几何超额收益率|number / null|随父级对象返回|`(1+R)/(1+B) - 1`|—|
-|`annual_risk.{year}.{frequency}_risk.total_arithmetic_excess_return`|区间算术超额收益率|number / null|随父级对象返回|`R-B`|与逐期算术超额连乘不同|
+|`annual_risk.{year}.{frequency}_risk.total_geometric_excess_return`|区间几何超额收益率|number / null|随父级对象返回|`(1+R)/(1+B) - 1`|`R`、`B` 取同一超额窗口；见[指增起算](#index-enhanced-excess-start)|
+|`annual_risk.{year}.{frequency}_risk.total_arithmetic_excess_return`|区间算术超额收益率|number / null|随父级对象返回|`R-B`|与逐期算术超额连乘不同；见[指增起算](#index-enhanced-excess-start)|
 |`annual_risk.{year}.{frequency}_risk.total_annual_returns`|日频区间累计收益折算的年化收益率|number / null|随父级对象返回|所有频率统一引用 `(1+R_daily)^(D/n_daily) - 1`，`D=交易252/自然365`|—|
 |`annual_risk.{year}.{frequency}_risk.annual_simple_interest`|日频区间累计收益折算的单利年化收益率|number / null|随父级对象返回|所有频率统一引用 `R_daily/n_daily*S`，`S=交易250/自然365`|—|
 |`annual_risk.{year}.{frequency}_risk.calmar_ratio`|卡马尔比率|number / null|随父级对象返回|上述日频期间年化收益除该频率 `max_drawdown`|期间年化收益相对最大回撤；零回撤时不能理解为可确定的无限回报|
@@ -124,8 +139,8 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`returns_summary.this_year`|向前一年的滚动收益|number / null|随父级对象返回|从区间末日回看 1 年的滚动窗口|并非本自然年度|
 |`returns_summary.annual`|复利年化收益率|number / null|随父级对象返回|(1+returns_summary.total)^(D/n_daily)−1；D=交易252/自然365|n_daily 为对齐后的基准日收益样本数|
 |`returns_summary.annual_simple_interest`|单利年化收益率|number / null|随父级对象返回|returns_summary.total/n_daily×S；S=交易250/自然365|不采用风险频率的 F|
-|`returns_summary.arithmetic_excess`|区间算术超额收益|number / null|随父级对象返回|returns_summary.total−B_daily|B_daily 为同区间基准日收益连乘减 1|
-|`returns_summary.geometric_excess`|区间几何超额收益|number / null|随父级对象返回|(1+returns_summary.total)/(1+B_daily)−1|基准增长倍数为零时无效|
+|`returns_summary.arithmetic_excess`|区间算术超额收益|number / null|随父级对象返回|`R_summary−B_daily`|`R_summary` 是超额窗口内按收益概览口径算的产品收益，`B_daily` 为同窗口基准日收益连乘减 1；命中[指增起算](#index-enhanced-excess-start)时，不能用原区间 `returns_summary.total` 代替|
+|`returns_summary.geometric_excess`|区间几何超额收益|number / null|随父级对象返回|`(1+R_summary)/(1+B_daily)−1`|与算术超额使用同一窗口；基准增长倍数为零时无效；见[指增起算](#index-enhanced-excess-start)|
 |`returns_summary.annual_twoside_turnover_rate`|年化双边换手率|number / null|随父级对象返回|`(sum(buy_amount)+sum(sell_amount))/mean(total_equity)/n*D`，`D=252/365`|买卖金额取[买入](../fields/balances.md#buy-amount)、[卖出](../fields/balances.md#sell-amount)，净资产取[total_equity](../fields/balances.md#total-equity)。空序列为空值；净资产缺口沿用之前值，交易日按日历对齐。零净资产时不能给出有效换手结论；缺失金额不应被理解为已确认无交易。|
 |`asset_series`|产品表现序列|object|extra_indicators 包含 asset_series|daily/weekly/monthly → array（日期记录）|需 extra_indicators 选择同名区块|
 |`asset_series.daily`|日频记录列表|array（object）|随 asset_series 返回|按日频排列的日期记录|不是“日期 → 值”映射；空序列为 []|
@@ -151,13 +166,13 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`benchmark_series.{frequency}[].total_turnover`|基准成交额|number|基准成交额序列非空时返回|日频取行情成交额，周/月按日成交额求和|仅数据支持时返回；[外部输入](#external-inputs)，不是产品买卖额|
 |`benchmark_series.{period_frequency}[].benchmark_returns`|基准周期收益|number / null|随父级记录返回|prod(1+b_daily)−1|—|
 |`benchmark_series.{period_frequency}[].benchmark_cumulative_returns`|基准周期累计收益|number / null|随父级记录返回|cumprod(1+b_period)−1|—|
-|`monthly_returns`|年/月/周收益明细|array（object）|extra_indicators 包含 monthly_returns|年份节点 children 为月份，月份 children 为周|需 extra_indicators 选择 monthly_returns|
+|`monthly_returns`|年/月/周收益明细|array（object）|extra_indicators 包含 monthly_returns|年份节点 children 为月份，月份 children 为周|年/月节点部分超额字段适用[指增起算](#index-enhanced-excess-start)，周节点不适用|
 |`monthly_returns[]`|年收益记录|object|随父级数组返回|以下字段组成一个年节点|数组元素路径；[] 不是 JSON 键|
 |`monthly_returns[].date`|年份|string|随父级记录返回|YYYY|结构标签|
 |`monthly_returns[].portfolio_returns`|产品周期收益|number / null|随父级记录返回|单产品净值差/NAV[期初]；否则 prod(1+r_daily)−1|净值来源见下方字段链接|
 |`monthly_returns[].benchmark_returns`|基准周期收益|number / null|随父级记录返回|prod(1+b_daily)−1|[基准来源](#external-inputs)，不是产品头寸|
-|`monthly_returns[].arithmetic_excess_returns`|算术超额收益|number / null|随父级记录返回|portfolio_returns−benchmark_returns|使用同一频率的产品与基准收益|
-|`monthly_returns[].geometric_excess_returns`|几何超额收益|number / null|随父级记录返回|(1+portfolio_returns)/(1+benchmark_returns)−1|基准增长倍数为零时无效|
+|`monthly_returns[].arithmetic_excess_returns`|算术超额收益|number / null|随父级记录返回|同窗口产品收益减基准收益|见[指增起算](#index-enhanced-excess-start)；不能总用同节点返回的原区间收益复算|
+|`monthly_returns[].geometric_excess_returns`|几何超额收益|number / null|随父级记录返回|同窗口产品增长倍数除以基准增长倍数再减 1|基准增长倍数为零时无效；见[指增起算](#index-enhanced-excess-start)|
 |`monthly_returns[].unit_net_value`|期末单位净值|number / null|单产品且累计净值与单位净值有效时返回|期末头寸报表 [unit_net_value](../fields/balances.md#unit-net-value)|—|
 |`monthly_returns[].acc_unit_net_value`|期末累计单位净值|number / null|单产品且累计净值与单位净值有效时返回|期末头寸报表 [acc_unit_net_value](../fields/balances.md#acc-unit-net-value)|—|
 |`monthly_returns[].adjusted_net_value`|期末复权净值|number / null|随父级记录返回|期末头寸报表 [adjusted_net_value](../fields/balances.md#adjusted-net-value)|—|
@@ -166,8 +181,8 @@ Python 签名：`rqamsh.analytics.indicators(resource: str, *, start_date: str |
 |`monthly_returns[].children[].date`|月份|string|随父级记录返回|YYYY-MM|结构标签|
 |`monthly_returns[].children[].portfolio_returns`|产品周期收益|number / null|随父级记录返回|单产品净值差/NAV[期初]；否则 prod(1+r_daily)−1|净值来源见下方字段链接|
 |`monthly_returns[].children[].benchmark_returns`|基准周期收益|number / null|随父级记录返回|prod(1+b_daily)−1|[基准来源](#external-inputs)，不是产品头寸|
-|`monthly_returns[].children[].arithmetic_excess_returns`|算术超额收益|number / null|随父级记录返回|portfolio_returns−benchmark_returns|使用同一频率的产品与基准收益|
-|`monthly_returns[].children[].geometric_excess_returns`|几何超额收益|number / null|随父级记录返回|(1+portfolio_returns)/(1+benchmark_returns)−1|基准增长倍数为零时无效|
+|`monthly_returns[].children[].arithmetic_excess_returns`|算术超额收益|number / null|随父级记录返回|同窗口产品收益减基准收益|见[指增起算](#index-enhanced-excess-start)；不能总用同节点返回的原区间收益复算|
+|`monthly_returns[].children[].geometric_excess_returns`|几何超额收益|number / null|随父级记录返回|同窗口产品增长倍数除以基准增长倍数再减 1|基准增长倍数为零时无效；见[指增起算](#index-enhanced-excess-start)|
 |`monthly_returns[].children[].unit_net_value`|期末单位净值|number / null|单产品且累计净值与单位净值有效时返回|期末头寸报表 [unit_net_value](../fields/balances.md#unit-net-value)|—|
 |`monthly_returns[].children[].acc_unit_net_value`|期末累计单位净值|number / null|单产品且累计净值与单位净值有效时返回|期末头寸报表 [acc_unit_net_value](../fields/balances.md#acc-unit-net-value)|—|
 |`monthly_returns[].children[].adjusted_net_value`|期末复权净值|number / null|随父级记录返回|期末头寸报表 [adjusted_net_value](../fields/balances.md#adjusted-net-value)|—|
@@ -225,9 +240,6 @@ alpha、beta、Sharpe、information_ratio 至少需 2 期；不足时不可作�
 滚动收益 this_week/this_month/this_quarter/this_year 分别回看 1 周、1 月、3 月、1 年；提供累计单位净值时沿用区间末累计净值减窗口起点累计净值、除窗口起点单位净值，起点缺失时回退请求区间基点；其他情况对窗口日收益连乘减 1。并非自然周/月/季度/年度。
 
 两种公开胜率操作都把零收益算赢，但采用的收益序列可能不同，不应直接拼接或宣称一致。若用户要求严格“正收益才算赢”，应先约定口径，不把默认胜率冒充该统计。
-
-指数增强特殊口径：仅单产品、策略 `index_enhanced` 且请求 `start_date` 等于 `trading_start_date` 时，指定超额指标从交易起始日**下一交易所交易日**起算，以交易起始日结算单位/累计净值为基点；绝对收益不因此改变。缺基点、后续头寸报表摘要或基准时不应用此调整。比较指增产品时，应核对区间是否触发该口径。
-
 
 <a id="external-inputs"></a>
 

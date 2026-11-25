@@ -67,6 +67,14 @@ result = rqamsh.analytics.indicators(
 
 读回至少看 `returns_summary.total`、`last_unit_net_value`、`asset_series.daily[]` 的 `date`、`daily_returns` 与两种净值。`asset_series` 是按频率分组的对象，`asset_series.daily` 才是逐日记录数组，不是“字段 → 日期”映射；本案例构造结果约为 0.04 和 1.196，具体数字与位数以读回为准。
 
+<a id="index-enhanced-excess-check"></a>
+
+### 分支：产品赚了，为什么指增超额为负？
+
+1. **先确认起算条件。** 用 [`products.get`](../../products.md#get) 查单只产品的 `strategy_category`、`trading_start_date`、`calendar` 和默认 `benchmark`；本次显式指定基准则以请求为准。不凭名称判定策略，也不把估值起始日当交易起始日。
+2. **留住原请求，再核对同口径超额。** 保留原起止日、基准、绝对收益和超额值。若单只指增产品从交易起始日分析，按[指增超额起算口径](../../analytics/metrics.md#index-enhanced-excess-start)，用当日结算净值为基点，按产品日历从下一交易日起分别取产品和基准样本；**只移核验起点，不改期末、不换基准**。若原请求已经从后续日期开始，直接核对原窗口，不再跳过它的首个样本。
+3. **对齐样本再下结论。** 例如教学构造数据中，含交易首日的绝对收益是 +12%；首日结算后到同一期末，按同一口径核出的产品收益是 −4%、基准收益是 +2%，则算术超额是 −6 个百分点，几何超额约 −5.88%。正绝对收益与负超额可以同时成立。核对 `daily_risk` 用日收益连乘，核对 `returns_summary` 用同窗口的收益概览口径，两者不混用。若首日结算净值、两侧配对样本或期末拿不到，说明哪项无法复算，不补零、不把核验区间当用户原区间，也不据此报计算异常。
+
 ### 区间核对五项
 
 净值和净资产类时序用公开的指标序列读，逐日形如 `{指标名: {日期: 值}}`。`analytics.series` 按 `indicators` 选择指标，不返回完整头寸报表；本例只请求下列五项。份额变动用 `unit_events.list`，实际份额、累计每份分红等在必要日期用单日 `balances.get` 读取；字段缺失或空值保留为缺口，不编造值：
